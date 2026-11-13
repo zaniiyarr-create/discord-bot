@@ -8,9 +8,8 @@ intents.voice_states = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# (ئیختیاری): ئەگەر بڤێی بۆت ب خۆکار دەما ڤەبوو بچیتە ناو کانالەکێ، ID یا وێ کانالا دەنگی لێرە دانە:
-# گەر نەڤێی، ڤی ئیدی یێ خوارێ بێخە 0 و تەنێ فەرمانا !join بکار بئینە.
-VOICE_CHANNEL_ID = 0  # بۆ نموونە: 123456789012345678
+# ID یا کانالا دەنگی یا تە:
+VOICE_CHANNEL_ID = 1174375300134613089
 
 @bot.event
 async def on_ready():
@@ -46,7 +45,7 @@ async def leave(ctx):
     else:
         await ctx.send("بۆت د ناو چ Call دا نینە!")
 
-# وەرگرتنا Token-ا بۆتێ ژ پشکا Environment Variables یا Railway (یان ب ڕەنگەکێ ڕاستەقینە)
+# وەرگرتنا Token-ا بۆتێ ژ پشکا Environment Variables یا Railway
 TOKEN = os.getenv("TOKEN")
 
 if not TOKEN:
