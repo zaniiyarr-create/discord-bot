@@ -1,4 +1,3 @@
-import os
 import discord
 from discord.ext import commands
 
@@ -16,6 +15,5 @@ async def on_ready():
 async def join(ctx):
     await ctx.send("✅ بۆت ئامادەیە و لە خزمەت تەدایە!")
 
-# لێرەدا ناوی ڤاریابڵەکە 'TOKEN'ـە وەک ئەوەی لە وێنەکەدا داناوە
-TOKEN = os.getenv("TOKEN")
-bot.run(TOKEN)
+# توکەنەکەی خۆت ڕاستەوخۆ لێرە دابنە بێ کێشە:
+bot.run("MTU3MDkxODY3MTgwNTcxODY5OQ.GqW91u.dL2UbQIYWvKi1iZRBOmMsopmYN9_x4-DthS4WQ")
