@@ -13,8 +13,7 @@ async def on_ready():
 
 @bot.command(name="join")
 async def join(ctx):
-    # لێرەدا دەنگ لابراوە تا کێشەی PyNaCl هشک نەبێت و پەیامەک بنێرێت
     await ctx.send("✅ بۆت ئامادەیە و لە خزمەت تەدایە!")
 
-# توکەنا بۆتێ خۆ لێرە دانە
-bot.run("YOUR_BOT_TOKEN")
+# تۆکەنەکە لێرە بە دروستی دانرا
+bot.run("MTU3MDkxODY3MTgwNTcxODY5OQ.GqW91u.dL2UbQIYWvKi1iZRBOmMsopmYN9_x4-DthS4WQ")
