@@ -38,7 +38,7 @@ Grant only the permissions needed:
 - Send Messages
 - Embed Links
 - Read Message History
-- Manage Channels (ticket creation and closing)
+- Manage Channels (ticket creation/closing and `/delete-categories` reset)
 - Manage Messages (purge command)
 - Moderate Members (timeout)
 - Kick Members
@@ -56,6 +56,7 @@ Invite the bot to your server using the generated URL. Keep the bot role below s
 
 ### Administrators / moderators
 - `/setup` — creates missing Friends Village channels and categories. It DOES NOT delete existing channels or messages.
+- `/delete-categories` — administrator-only and confirmation-protected. Permanently deletes every category and all channels inside those categories (including their messages). Channels outside categories are left untouched. Run `/setup` afterward to recreate the Friends Village layout.
 - `/set-welcome channel:` — changes the welcome channel.
 - `/purge amount:` — removes 1–50 recent messages.
 - `/timeout member: minutes: reason:` 
@@ -71,3 +72,12 @@ Invite the bot to your server using the generated URL. Keep the bot role below s
 - Existing channels and messages are not removed.
 - SQLite stores the welcome-channel setting using WAL mode and a 30-second busy timeout. Use a Railway Volume mounted at `/data` and set `DATABASE_PATH=/data/friends_village.db` to persist the database. Without a persistent volume, settings may be lost when the container is replaced.
 - The bot uses slash commands, so it does not need Message Content Intent.
+
+## Full server layout reset
+
+1. Run `/delete-categories` as a server administrator.
+2. Read the warning and press **Yes, delete all categories** only if you accept that all channels and messages inside those categories will be permanently deleted.
+3. Channels not assigned to a category are not deleted.
+4. After the reset completes, run `/setup` to create the Friends Village categories and channels again.
+
+The reset requires the bot's **Manage Channels** permission. Discord may prevent deletion of channels/categories the bot cannot manage due to role hierarchy or channel permissions; any such failures are reported in the result.

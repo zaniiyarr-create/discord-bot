@@ -255,7 +255,122 @@ async def on_member_join(member: discord.Member):
             log.warning("Cannot send welcome message in channel %s", channel_id)
 
 
+# -------------------- Destructive reset confirmation --------------------
+class DeleteCategoriesConfirmView(discord.ui.View):
+    """One-time confirmation for deleting every category and its child channels."""
+    def __init__(self, requester_id: int):
+        super().__init__(timeout=60)
+        self.requester_id = requester_id
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.requester_id:
+            await interaction.response.send_message(
+                "Only the administrator who started this reset can confirm it.",
+                ephemeral=True,
+            )
+            return False
+        return True
+
+    @discord.ui.button(label="Yes, delete all categories", style=discord.ButtonStyle.danger, emoji="🗑️")
+    async def confirm_delete(self, interaction: discord.Interaction, button: discord.ui.Button):
+        guild = interaction.guild
+        if guild is None:
+            return await interaction.response.send_message("This command only works in a server.", ephemeral=True)
+
+        bot_member = guild.me or (guild.get_member(bot.user.id) if bot.user else None)
+        if bot_member is None or not bot_member.guild_permissions.manage_channels:
+            return await interaction.response.send_message(
+                "I need the **Manage Channels** permission to perform this reset.",
+                ephemeral=True,
+            )
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        self.stop()
+        deleted_channels = 0
+        deleted_categories = 0
+        failures = []
+
+        # Delete every channel nested under each category first. Deleting a Discord
+        # category alone only uncategorizes its children; it does not delete them.
+        for category in list(guild.categories):
+            for channel in list(category.channels):
+                try:
+                    await channel.delete(reason=f"Friends Village full reset requested by {interaction.user}")
+                    deleted_channels += 1
+                except (discord.Forbidden, discord.HTTPException) as exc:
+                    failures.append(f"#{channel.name}: {type(exc).__name__}")
+                    log.exception("Could not delete channel %s (%s)", channel.name, channel.id)
+            try:
+                # Only remove the category if it is now empty.
+                if not category.channels:
+                    await category.delete(reason=f"Friends Village full reset requested by {interaction.user}")
+                    deleted_categories += 1
+                else:
+                    failures.append(f"Category {category.name}: still contains channels")
+            except (discord.Forbidden, discord.HTTPException) as exc:
+                failures.append(f"Category {category.name}: {type(exc).__name__}")
+                log.exception("Could not delete category %s (%s)", category.name, category.id)
+
+        result = discord.Embed(
+            title="Server category reset finished",
+            description=(
+                f"Deleted **{deleted_categories}** categor(ies) and **{deleted_channels}** channel(s).\n"
+                "Channels that were not inside a category were left untouched.\n\n"
+                "When you are ready, run `/setup` to create the Friends Village layout again."
+            ),
+            color=discord.Color.orange() if failures else discord.Color.green(),
+        )
+        if failures:
+            result.add_field(
+                name=f"Items not deleted ({len(failures)})",
+                value="\n".join(failures[:10])[:1024],
+                inline=False,
+            )
+        await interaction.edit_original_response(content=None, embed=result, view=None)
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary, emoji="✖️")
+    async def cancel_delete(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.stop()
+        await interaction.response.edit_message(
+            content="Reset cancelled. Nothing was deleted.", embed=None, view=None
+        )
+
+
 # -------------------- Slash commands --------------------
+@bot.tree.command(name="delete-categories", description="Delete every category and all channels inside it (irreversible).")
+@app_commands.checks.has_permissions(administrator=True)
+@app_commands.guild_only()
+async def delete_categories(interaction: discord.Interaction):
+    guild = interaction.guild
+    if guild is None:
+        return await interaction.response.send_message("This command only works in a server.", ephemeral=True)
+
+    bot_member = guild.me or (guild.get_member(bot.user.id) if bot.user else None)
+    if bot_member is None or not bot_member.guild_permissions.manage_channels:
+        return await interaction.response.send_message(
+            "I need the **Manage Channels** permission before I can delete categories and channels.",
+            ephemeral=True,
+        )
+
+    channel_count = sum(len(category.channels) for category in guild.categories)
+    embed = discord.Embed(
+        title="⚠️ Confirm full category reset",
+        description=(
+            f"This will permanently delete **{len(guild.categories)} categories** and "
+            f"**{channel_count} channels inside those categories**.\n\n"
+            "All messages in those channels will be lost. Channels outside categories will remain. "
+            "This cannot be undone.\n\n"
+            "After it finishes, run `/setup` to create the new Friends Village categories and channels."
+        ),
+        color=discord.Color.red(),
+    )
+    await interaction.response.send_message(
+        embed=embed,
+        view=DeleteCategoriesConfirmView(interaction.user.id),
+        ephemeral=True,
+    )
+
+
 @bot.tree.command(name="ping", description="Check the bot response time.")
 async def ping(interaction: discord.Interaction):
     await interaction.response.send_message(
