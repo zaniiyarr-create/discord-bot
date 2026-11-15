@@ -1,4 +1,3 @@
-import os
 import discord
 from discord.ext import commands
 
@@ -27,7 +26,7 @@ async def setup(ctx):
                 await channel.delete()
             except Exception as e:
                 print(f"Could not delete {channel.name}: {e}")
-
+    
     category_name = "── • 👑 LOBBY • ──"
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(read_messages=True, send_messages=True)
@@ -37,5 +36,5 @@ async def setup(ctx):
     await guild.create_text_channel("bot-commands", category=new_category)
     await ctx.send("✨ سێرڤەر بە سەرکەوتوویی تەسفیە بوو و کاتێگۆرییە نوێیەکە دروست کرا!")
 
-# خوێندنەوەی ڕاستەوخۆ لە متغیڕێن ڕەیلوەی
-bot.run(os.getenv("TOKEN"))
+# تۆکەنەکە لێرە بە یەک پارچە و بێ کەموکوڕی داندراوە
+bot.run("MTU3MDkxODY3MTgwNTcxODY5OQ.GqW91u.dL2UbQIYWvKi1iZRBOmMsopmYN9_x4-DthS4WQ")
