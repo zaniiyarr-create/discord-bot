@@ -124,8 +124,17 @@ async def ensure_text_channel(
     name: str,
     topic: Optional[str] = None,
 ) -> discord.TextChannel:
-    existing = discord.utils.get(category.text_channels, name=name)
+    # Search the whole guild, not only this category, so rerunning /setup
+    # won't create a duplicate if a channel was moved to another category.
+    existing = discord.utils.find(
+        lambda ch: isinstance(ch, discord.TextChannel) and ch.name == name,
+        guild.channels,
+    )
     if existing:
+        if existing.category_id != category.id:
+            await existing.edit(category=category, reason="Friends Village setup: keep layout in sync")
+        if topic and existing.topic != topic:
+            await existing.edit(topic=topic, reason="Friends Village setup: update channel topic")
         return existing
     return await guild.create_text_channel(
         name,
@@ -135,19 +144,23 @@ async def ensure_text_channel(
     )
 
 
-
 async def ensure_voice_channel(
     guild: discord.Guild,
     category: discord.CategoryChannel,
     name: str,
 ) -> discord.VoiceChannel:
-    existing = discord.utils.get(category.voice_channels, name=name)
+    existing = discord.utils.find(
+        lambda ch: isinstance(ch, discord.VoiceChannel) and ch.name == name,
+        guild.channels,
+    )
     if existing:
+        if existing.category_id != category.id:
+            await existing.edit(category=category, reason="Friends Village setup: keep layout in sync")
         return existing
     return await guild.create_voice_channel(
         name,
         category=category,
-        reason="Friends Village luxury setup",
+        reason="Friends Village setup",
     )
 
 
@@ -157,14 +170,23 @@ async def ensure_forum_channel(
     name: str,
     topic: Optional[str] = None,
 ) -> discord.ForumChannel:
-    existing = discord.utils.get(category.forum_channels, name=name)
+    # CategoryChannel has .channels, not .forum_channels, in discord.py.
+    # Search guild.channels so forum channels are found regardless of category.
+    existing = discord.utils.find(
+        lambda ch: isinstance(ch, discord.ForumChannel) and ch.name == name,
+        guild.channels,
+    )
     if existing:
+        if existing.category_id != category.id:
+            await existing.edit(category=category, reason="Friends Village setup: keep layout in sync")
+        if topic and existing.topic != topic:
+            await existing.edit(topic=topic, reason="Friends Village setup: update forum topic")
         return existing
     return await guild.create_forum(
         name,
         category=category,
         topic=topic,
-        reason="Friends Village luxury setup",
+        reason="Friends Village setup",
     )
 
 
