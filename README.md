@@ -1,83 +1,51 @@
-# Friends Village Bot V2.0
+# Friends Village — Luxury Edition
 
-A Discord.py bot with safe server setup, welcome messages, persistent support-ticket buttons,
-basic moderation, slash commands, and SQLite settings. On startup, the bot syncs application commands directly to each connected server so newly added commands appear without waiting for global-command propagation.
+A Discord community bot built with `discord.py 2.6.4` and SQLite.
 
-## Security first
+## Features
 
-- If a bot token has ever appeared in GitHub, screenshots, logs, or a ZIP shared publicly, reset it in the Discord Developer Portal immediately.
-- Add the replacement token only as the Railway variable `DISCORD_TOKEN`.
-- Never put tokens in `bot.py`, `.env.example`, GitHub commits, or chat messages.
-- Do not reuse a token that has been exposed.
+- English-first luxury server layout.
+- Public categories for Welcome, Community, Gaming, Voice Lounge and Community Forums.
+- Private VIP Lounge and Staff Control categories.
+- Text channels, voice channels and forum channels.
+- Persistent welcome-channel setting.
+- Private support tickets with a close button.
+- Moderation slash commands: `/purge`, `/timeout`, `/kick`, `/ban`.
+- Utility commands: `/ping`, `/help`, `/serverinfo`, `/userinfo`.
+- Safe, repeatable `/setup`: creates missing resources and does not delete existing channels or messages.
 
-## Railway deployment
+## Setup
 
-1. Push this project to your GitHub repository.
-2. In Railway, open the bot service connected to that repository.
-3. Open **Variables** and add:
-   - `DISCORD_TOKEN` = your newly reset bot token
-   - `DATABASE_PATH` = `/data/friends_village.db`
-4. Add a Railway Volume and mount it at `/data` so SQLite settings persist across redeployments.
-5. Deploy. The included Nixpacks configuration starts `python bot.py`.
-6. On startup, the bot registers persistent ticket buttons, then syncs slash commands to each connected server.
-7. Open the deployment logs. Look for `Successfully synced ... application command(s) to guild ...` and `Logged in as ...`.
+1. Create a Discord application and bot in the Discord Developer Portal.
+2. Enable **Server Members Intent** for welcome events.
+3. Invite the bot with **Manage Channels** and **Manage Roles**, plus send messages, embed links, read message history, moderate members, kick and ban members as required.
+4. Add `DISCORD_TOKEN` to your environment variables.
+5. Run `python bot.py`.
+6. In your Discord server, run `/setup` as an administrator.
 
-## Discord Developer Portal
+## Public and private access
 
-In your application's **Bot** settings:
-- Reset the bot token if it was exposed.
-- Enable **Server Members Intent** because the bot welcomes new members.
-- Message Content Intent is not required; commands use Discord slash commands.
+`/setup` creates two roles with no elevated permissions:
 
-In **OAuth2 → URL Generator**, select scopes:
-- `bot`
-- `applications.commands`
+- `Village VIP` — assign this role to members who should access the VIP Private Lounge.
+- `Village Staff` — assign this role to trusted moderators who should access Staff Control.
 
-Grant only the permissions needed:
-- View Channels
-- Send Messages
-- Embed Links
-- Read Message History
-- Manage Channels (ticket creation/closing and `/delete-categories` reset)
-- Manage Messages (purge command)
-- Moderate Members (timeout)
-- Kick Members
-- Ban Members
+Administrators retain access through Discord's administrator permission. The bot must be above `Village VIP` and `Village Staff` in the server role hierarchy if it needs to manage those roles later; this version does not automatically assign either role.
 
-Invite the bot to your server using the generated URL. Keep the bot role below staff roles and do not grant Administrator unless genuinely required.
+## Hosting
 
-## Commands
+For Railway, use:
 
-### Everyone
-- `/ping`
-- `/help`
-- `/serverinfo`
-- `/userinfo`
+- `DISCORD_TOKEN` — your bot token
+- `DATABASE_PATH=/data/friends_village.db`
+- `LOG_LEVEL=INFO`
 
-### Administrators / moderators
-- `/setup` — creates missing Friends Village channels and categories. It DOES NOT delete existing channels or messages.
-- `/delete-categories` — administrator-only and confirmation-protected. Permanently deletes ALL server channels (including uncategorized text/voice channels and their messages) and then deletes all categories. This is irreversible. Run `/setup` afterward to recreate the Friends Village layout.
-- `/set-welcome channel:` — changes the welcome channel.
-- `/purge amount:` — removes 1–50 recent messages.
-- `/timeout member: minutes: reason:` 
-- `/kick member: reason:`
-- `/ban member: reason:`
+Attach a Railway Volume mounted at `/data` to persist the SQLite database.
 
-### Tickets
-`/setup` creates a support panel in `🎫・support-tickets`. Members can create private tickets with the button. The ticket creator or a moderator can close their ticket.
-
-## Important behavior
+## Important
 
 - `/setup` is non-destructive and can be run more than once.
-- Existing channels and messages are not removed.
-- SQLite stores the welcome-channel setting using WAL mode and a 30-second busy timeout. Use a Railway Volume mounted at `/data` and set `DATABASE_PATH=/data/friends_village.db` to persist the database. Without a persistent volume, settings may be lost when the container is replaced.
-- The bot uses slash commands, so it does not need Message Content Intent.
-
-## Full server layout reset
-
-1. Run `/delete-categories` as a server administrator.
-2. Read the warning and press **Yes, delete all categories** only if you accept that all channels and messages inside those categories will be permanently deleted.
-3. Channels not assigned to a category are not deleted.
-4. After the reset completes, run `/setup` to create the Friends Village categories and channels again.
-
-The reset requires the bot's **Manage Channels** permission. It deletes every channel in the server, including channels that are not inside a category, before deleting categories. Discord may prevent deletion of channels/categories the bot cannot manage due to permissions or server restrictions; any such failures are reported in the result.
+- Existing channels and messages are not deleted or renamed.
+- Private categories are hidden from `@everyone`; access is granted to their matching role and administrators.
+- Forum channel creation requires the bot's **Manage Channels** permission and a server where Discord forum channels are available.
+- Do not share your bot token. If it has been exposed, regenerate it in the Discord Developer Portal.

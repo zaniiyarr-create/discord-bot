@@ -135,6 +135,53 @@ async def ensure_text_channel(
     )
 
 
+
+async def ensure_voice_channel(
+    guild: discord.Guild,
+    category: discord.CategoryChannel,
+    name: str,
+) -> discord.VoiceChannel:
+    existing = discord.utils.get(category.voice_channels, name=name)
+    if existing:
+        return existing
+    return await guild.create_voice_channel(
+        name,
+        category=category,
+        reason="Friends Village luxury setup",
+    )
+
+
+async def ensure_forum_channel(
+    guild: discord.Guild,
+    category: discord.CategoryChannel,
+    name: str,
+    topic: Optional[str] = None,
+) -> discord.ForumChannel:
+    existing = discord.utils.get(category.forum_channels, name=name)
+    if existing:
+        return existing
+    return await guild.create_forum(
+        name,
+        category=category,
+        topic=topic,
+        reason="Friends Village luxury setup",
+    )
+
+
+async def ensure_role(guild: discord.Guild, name: str, color: discord.Color) -> discord.Role:
+    existing = discord.utils.get(guild.roles, name=name)
+    if existing:
+        return existing
+    return await guild.create_role(
+        name=name,
+        color=color,
+        permissions=discord.Permissions.none(),
+        hoist=False,
+        mentionable=False,
+        reason="Friends Village access roles",
+    )
+
+
 async def send_ticket_panel(channel: discord.TextChannel):
     # Avoid posting a duplicate panel when /setup is run again.
     async for message in channel.history(limit=30):
@@ -177,7 +224,7 @@ class TicketPanelView(discord.ui.View):
                 f"You already have an open ticket: {existing.mention}", ephemeral=True
             )
 
-        category = discord.utils.get(guild.categories, name="🎫 TICKETS")
+        category = discord.utils.get(guild.categories, name="🎫・SUPPORT TICKETS")
         if category is None:
             category = await guild.create_category("🎫 TICKETS", reason="Ticket system")
 
@@ -267,8 +314,8 @@ async def on_member_join(member: discord.Member):
     channel = member.guild.get_channel(channel_id)
     if isinstance(channel, discord.TextChannel):
         embed = discord.Embed(
-            title="Welcome to Friends Village! 🎉",
-            description=f"Welcome {member.mention}! We are happy to have you here.",
+            title="Welcome to Friends Village! ✨",
+            description=f"Welcome {member.mention}! Make yourself at home and enjoy the community.",
             color=discord.Color.green(),
         )
         embed.set_thumbnail(url=member.display_avatar.url)
@@ -276,89 +323,6 @@ async def on_member_join(member: discord.Member):
             await channel.send(embed=embed)
         except discord.Forbidden:
             log.warning("Cannot send welcome message in channel %s", channel_id)
-
-
-# -------------------- Destructive reset confirmation --------------------
-class DeleteCategoriesConfirmView(discord.ui.View):
-    """Confirmation for deleting every server channel and category."""
-    def __init__(self, requester_id: int):
-        super().__init__(timeout=60)
-        self.requester_id = requester_id
-
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id != self.requester_id:
-            await interaction.response.send_message(
-                "Only the administrator who started this reset can confirm it.",
-                ephemeral=True,
-            )
-            return False
-        return True
-
-    @discord.ui.button(label="Yes, delete ALL channels", style=discord.ButtonStyle.danger, emoji="🗑️")
-    async def confirm_delete(self, interaction: discord.Interaction, button: discord.ui.Button):
-        guild = interaction.guild
-        if guild is None:
-            return await interaction.response.send_message("This command only works in a server.", ephemeral=True)
-
-        bot_member = guild.me or (guild.get_member(bot.user.id) if bot.user else None)
-        if bot_member is None or not bot_member.guild_permissions.manage_channels:
-            return await interaction.response.send_message(
-                "I need the **Manage Channels** permission to perform this reset.",
-                ephemeral=True,
-            )
-
-        await interaction.response.defer(ephemeral=True, thinking=True)
-        self.stop()
-        deleted_channels = 0
-        deleted_categories = 0
-        failures = []
-        reason = f"Friends Village full server reset requested by {interaction.user} ({interaction.user.id})"
-
-        # IMPORTANT: Deleting a Discord category only uncategorizes its children.
-        # Delete every channel in the guild first, including channels already
-        # uncategorized by an earlier reset, then delete all empty categories.
-        channels = [ch for ch in list(guild.channels) if not isinstance(ch, discord.CategoryChannel)]
-        for channel in channels:
-            try:
-                await channel.delete(reason=reason)
-                deleted_channels += 1
-            except (discord.Forbidden, discord.HTTPException) as exc:
-                failures.append(f"{channel.name}: {type(exc).__name__}")
-                log.exception("Could not delete channel %s (%s)", channel.name, channel.id)
-
-        for category in list(guild.categories):
-            try:
-                # If any child channel could not be deleted, Discord will reject
-                # deleting the non-empty category and the failure is reported.
-                await category.delete(reason=reason)
-                deleted_categories += 1
-            except (discord.Forbidden, discord.HTTPException) as exc:
-                failures.append(f"Category {category.name}: {type(exc).__name__}")
-                log.exception("Could not delete category %s (%s)", category.name, category.id)
-
-        result = discord.Embed(
-            title="Full server channel reset finished",
-            description=(
-                f"Deleted **{deleted_channels} channel(s)** and **{deleted_categories} categor(ies)**.\n"
-                "This includes channels that were not inside a category.\n\n"
-                "When you are ready, run `/setup` to create the Friends Village layout again."
-            ),
-            color=discord.Color.orange() if failures else discord.Color.green(),
-        )
-        if failures:
-            result.add_field(
-                name=f"Items not deleted ({len(failures)})",
-                value="\n".join(failures[:10])[:1024],
-                inline=False,
-            )
-        await interaction.edit_original_response(content=None, embed=result, view=None)
-
-    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary, emoji="✖️")
-    async def cancel_delete(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.stop()
-        await interaction.response.edit_message(
-            content="Reset cancelled. Nothing was deleted.", embed=None, view=None
-        )
 
 
 # -------------------- Slash commands --------------------
@@ -455,7 +419,7 @@ async def userinfo(interaction: discord.Interaction, member: Optional[discord.Me
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-@bot.tree.command(name="setup", description="Create missing Friends Village channels without deleting anything.")
+@bot.tree.command(name="setup", description="Create the luxury Friends Village server layout safely.")
 @app_commands.checks.has_permissions(administrator=True)
 @app_commands.guild_only()
 async def setup(interaction: discord.Interaction):
@@ -463,39 +427,153 @@ async def setup(interaction: discord.Interaction):
     if guild is None:
         return await interaction.response.send_message("This command only works in a server.", ephemeral=True)
 
+    bot_member = guild.me or (guild.get_member(bot.user.id) if bot.user else None)
+    if bot_member is None:
+        return await interaction.response.send_message(
+            "I could not verify my server permissions. Please try again shortly.",
+            ephemeral=True,
+        )
+    if not bot_member.guild_permissions.manage_channels:
+        return await interaction.response.send_message(
+            "I need the **Manage Channels** permission to create the server layout.",
+            ephemeral=True,
+        )
+    if not bot_member.guild_permissions.manage_roles:
+        return await interaction.response.send_message(
+            "I need the **Manage Roles** permission to create the Village VIP and Village Staff roles.",
+            ephemeral=True,
+        )
+
     await interaction.response.defer(ephemeral=True, thinking=True)
 
+    # Create dedicated access roles. Assign members to these roles manually.
+    vip_role = await ensure_role(guild, "Village VIP", discord.Color.gold())
+    staff_role = await ensure_role(guild, "Village Staff", discord.Color.from_rgb(126, 87, 194))
+
+    everyone = guild.default_role
+
     public_overwrites = {
-        guild.default_role: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
+        everyone: discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            read_message_history=True,
+            connect=True,
+            speak=True,
+        )
     }
-    category = await ensure_category(guild, "🏡 FRIENDS VILLAGE", public_overwrites)
 
-    welcome = await ensure_text_channel(guild, category, "👋・welcome")
-    await ensure_text_channel(guild, category, "💬・general-chat")
-    await ensure_text_channel(guild, category, "🤖・bot-commands")
-    support = await ensure_text_channel(guild, category, "🎫・support-tickets")
-    await ensure_text_channel(guild, category, "📢・announcements")
+    # 01 — Welcome & information
+    welcome_cat = await ensure_category(guild, "🏡・WELCOME & INFORMATION", public_overwrites)
+    welcome = await ensure_text_channel(guild, welcome_cat, "👋・welcome", "Welcome to Friends Village.")
+    await ensure_text_channel(guild, welcome_cat, "📜・server-rules", "Read the community rules before chatting.")
+    await ensure_text_channel(guild, welcome_cat, "📢・announcements", "Official community announcements.")
+    await ensure_text_channel(guild, welcome_cat, "🎭・roles", "Choose your community roles.")
 
-    # Create a private staff log category. Access is not granted to @everyone.
+    # 02 — Community
+    community_cat = await ensure_category(guild, "💬・COMMUNITY", public_overwrites)
+    await ensure_text_channel(guild, community_cat, "💭・general-chat", "The main community conversation.")
+    await ensure_text_channel(guild, community_cat, "🤝・introductions", "Meet the Friends Village community.")
+    await ensure_text_channel(guild, community_cat, "📸・media-gallery", "Share photos, clips and creations.")
+    await ensure_text_channel(guild, community_cat, "💡・suggestions", "Share ideas to improve the server.")
+    await ensure_text_channel(guild, community_cat, "🤖・bot-commands", "Use bot commands here.")
+
+    # 03 — Gaming
+    gaming_cat = await ensure_category(guild, "🎮・GAMING", public_overwrites)
+    await ensure_text_channel(guild, gaming_cat, "🎮・gaming-chat", "Talk about games and gaming news.")
+    await ensure_text_channel(guild, gaming_cat, "👥・find-a-team", "Find people to play with.")
+
+    # 04 — Voice lounge
+    voice_cat = await ensure_category(guild, "🎙️・VOICE LOUNGE", public_overwrites)
+    await ensure_voice_channel(guild, voice_cat, "🔊・General Lounge")
+    await ensure_voice_channel(guild, voice_cat, "☕・Chill Room")
+    await ensure_voice_channel(guild, voice_cat, "🎵・Music Room")
+    await ensure_voice_channel(guild, voice_cat, "🎮・Gaming Room")
+    await ensure_voice_channel(guild, voice_cat, "🌙・Late Night Talks")
+
+    # 05 — Forums
+    forum_cat = await ensure_category(guild, "🧵・COMMUNITY FORUMS", public_overwrites)
+    await ensure_forum_channel(guild, forum_cat, "💬・community-discussions", "Start a topic and discuss it with the community.")
+    await ensure_forum_channel(guild, forum_cat, "❓・questions-and-help", "Ask questions and help other members.")
+    await ensure_forum_channel(guild, forum_cat, "🎨・showcase", "Share projects, art, screenshots and achievements.")
+
+    # 06 — Private VIP area. Only VIP, staff and administrators can view it.
+    private_overwrites = {
+        everyone: discord.PermissionOverwrite(view_channel=False),
+        vip_role: discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            read_message_history=True,
+            connect=True,
+            speak=True,
+        ),
+        staff_role: discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            read_message_history=True,
+            connect=True,
+            speak=True,
+            manage_messages=True,
+        ),
+    }
+    if bot_member:
+        private_overwrites[bot_member] = discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            read_message_history=True,
+            manage_channels=True,
+            connect=True,
+            speak=True,
+        )
+
+    private_cat = await ensure_category(guild, "💎・VIP PRIVATE LOUNGE", private_overwrites)
+    await ensure_text_channel(guild, private_cat, "💎・vip-chat", "Private chat for Village VIP members.")
+    await ensure_text_channel(guild, private_cat, "📸・vip-media", "A private space for VIP media.")
+    await ensure_voice_channel(guild, private_cat, "🔐・VIP Voice")
+
+    # 07 — Staff area
     staff_overwrites = {
-        guild.default_role: discord.PermissionOverwrite(view_channel=False)
+        everyone: discord.PermissionOverwrite(view_channel=False),
+        staff_role: discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            read_message_history=True,
+            manage_messages=True,
+        ),
     }
-    staff_category = await ensure_category(guild, "🔒 STAFF AREA", staff_overwrites)
-    staff_logs = await ensure_text_channel(guild, staff_category, "📋・staff-logs")
+    if bot_member:
+        staff_overwrites[bot_member] = discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            read_message_history=True,
+            manage_channels=True,
+        )
+    staff_cat = await ensure_category(guild, "🔒・STAFF CONTROL", staff_overwrites)
+    staff_logs = await ensure_text_channel(guild, staff_cat, "📋・staff-logs")
+    await ensure_text_channel(guild, staff_cat, "💬・staff-chat")
+    await ensure_voice_channel(guild, staff_cat, "🔊・Staff Voice")
 
-    set_welcome_channel(guild.id, welcome.id)
+    # 08 — Support tickets
+    ticket_cat = await ensure_category(guild, "🎫・SUPPORT TICKETS", public_overwrites)
+    support = await ensure_text_channel(guild, ticket_cat, "🎫・create-a-ticket")
     await send_ticket_panel(support)
 
+    set_welcome_channel(guild.id, welcome.id)
+
     embed = discord.Embed(
-        title="Friends Village setup complete",
+        title="✨ Friends Village — Luxury Setup Complete",
         description=(
-            "Created any missing channels and categories. Existing channels and messages were left untouched.\n\n"
+            "The server layout is ready. Existing channels and messages were not deleted.\n\n"
+            "**Public areas:** Welcome, Community, Gaming, Voice Lounge and Forums.\n"
+            "**Private areas:** VIP Private Lounge and Staff Control.\n"
+            "**Support:** Ticket panel is ready.\n\n"
             f"Welcome channel: {welcome.mention}\n"
             f"Ticket panel: {support.mention}\n"
-            f"Staff logs: {staff_logs.mention}"
+            f"Staff logs: {staff_logs.mention}\n\n"
+            "**Next step:** Assign members to `Village VIP` and trusted moderators to `Village Staff`."
         ),
-        color=discord.Color.green(),
+        color=discord.Color.from_rgb(126, 87, 194),
     )
+    embed.set_footer(text="Friends Village • A place to belong")
     await interaction.followup.send(embed=embed, ephemeral=True)
 
 
