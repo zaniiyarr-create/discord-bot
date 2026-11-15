@@ -1,7 +1,7 @@
 # Friends Village Bot V2.0
 
 A Discord.py bot with safe server setup, welcome messages, persistent support-ticket buttons,
-basic moderation, slash commands, and SQLite settings. The startup hook syncs application commands automatically.
+basic moderation, slash commands, and SQLite settings. On startup, the bot syncs application commands directly to each connected server so newly added commands appear without waiting for global-command propagation.
 
 ## Security first
 
@@ -19,8 +19,8 @@ basic moderation, slash commands, and SQLite settings. The startup hook syncs ap
    - `DATABASE_PATH` = `/data/friends_village.db`
 4. Add a Railway Volume and mount it at `/data` so SQLite settings persist across redeployments.
 5. Deploy. The included Nixpacks configuration starts `python bot.py`.
-6. On startup, the bot syncs its slash commands and registers persistent ticket buttons.
-7. Open the deployment logs. A successful start logs `Successfully synced ... application command(s)` and `Logged in as ...`.
+6. On startup, the bot registers persistent ticket buttons, then syncs slash commands to each connected server.
+7. Open the deployment logs. Look for `Successfully synced ... application command(s) to guild ...` and `Logged in as ...`.
 
 ## Discord Developer Portal
 

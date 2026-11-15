@@ -26,16 +26,38 @@ intents.members = True  # Enable Server Members Intent in Discord Developer Port
 
 # Slash commands are used, so Message Content Intent is not required.
 class FriendsVillageBot(commands.Bot):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._guild_commands_synced = False
+
     async def setup_hook(self):
-        """Register persistent component views and publish slash commands once per startup."""
+        """Register persistent component views. Guild commands sync after the guild cache is ready."""
         self.add_view(TicketPanelView())
         self.add_view(CloseTicketView())
-        try:
-            synced = await self.tree.sync()
-            log.info("Successfully synced %s application command(s)", len(synced))
-        except discord.HTTPException:
-            log.exception("Failed to sync application commands")
-            raise
+
+    async def sync_guild_commands(self):
+        """Publish commands to each connected server for near-immediate availability."""
+        if self._guild_commands_synced:
+            return
+        if not self.guilds:
+            log.warning("No guilds are cached yet; slash-command sync will retry on the next ready event")
+            return
+
+        successful = 0
+        for guild in self.guilds:
+            try:
+                self.tree.copy_global_to(guild=guild)
+                synced = await self.tree.sync(guild=guild)
+                log.info(
+                    "Successfully synced %s application command(s) to guild %s (%s): %s",
+                    len(synced), guild.name, guild.id,
+                    ", ".join(command.name for command in synced),
+                )
+                successful += 1
+            except discord.HTTPException:
+                log.exception("Failed to sync application commands to guild %s (%s)", guild.name, guild.id)
+
+        self._guild_commands_synced = successful == len(self.guilds)
 
 
 bot = FriendsVillageBot(command_prefix="!", intents=intents)
@@ -234,6 +256,7 @@ class CloseTicketView(discord.ui.View):
 async def on_ready():
     log.info("Logged in as %s (ID: %s)", bot.user, bot.user.id if bot.user else "unknown")
     log.info("Connected to %s server(s)", len(bot.guilds))
+    await bot.sync_guild_commands()
 
 
 @bot.event
@@ -363,6 +386,11 @@ async def delete_categories(interaction: discord.Interaction):
             "After it finishes, run `/setup` to create the new Friends Village categories and channels."
         ),
         color=discord.Color.red(),
+    )
+    log.info(
+        "Delete-categories requested by %s (%s) in guild %s (%s): %s categories, %s child channels",
+        interaction.user, interaction.user.id, guild.name, guild.id,
+        len(guild.categories), channel_count,
     )
     await interaction.response.send_message(
         embed=embed,
