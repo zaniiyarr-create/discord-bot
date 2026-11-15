@@ -16,6 +16,6 @@ async def on_ready():
 async def join(ctx):
     await ctx.send("✅ بۆت ئامادەیە و لە خزمەت تەدایە!")
 
-# وەرگرتنی تۆکەن لە ڕەیلوەی بێ ئەوەی لە کۆدەکەدا بشکێت
-TOKEN = os.getenv("DISCORD_TOKEN")
+# لێرەدا ناوی ڤاریابڵەکە 'TOKEN'ـە وەک ئەوەی لە وێنەکەدا داناوە
+TOKEN = os.getenv("TOKEN")
 bot.run(TOKEN)
