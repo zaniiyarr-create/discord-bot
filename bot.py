@@ -280,7 +280,7 @@ async def on_member_join(member: discord.Member):
 
 # -------------------- Destructive reset confirmation --------------------
 class DeleteCategoriesConfirmView(discord.ui.View):
-    """One-time confirmation for deleting every category and its child channels."""
+    """Confirmation for deleting every server channel and category."""
     def __init__(self, requester_id: int):
         super().__init__(timeout=60)
         self.requester_id = requester_id
@@ -294,7 +294,7 @@ class DeleteCategoriesConfirmView(discord.ui.View):
             return False
         return True
 
-    @discord.ui.button(label="Yes, delete all categories", style=discord.ButtonStyle.danger, emoji="🗑️")
+    @discord.ui.button(label="Yes, delete ALL channels", style=discord.ButtonStyle.danger, emoji="🗑️")
     async def confirm_delete(self, interaction: discord.Interaction, button: discord.ui.Button):
         guild = interaction.guild
         if guild is None:
@@ -312,33 +312,35 @@ class DeleteCategoriesConfirmView(discord.ui.View):
         deleted_channels = 0
         deleted_categories = 0
         failures = []
+        reason = f"Friends Village full server reset requested by {interaction.user} ({interaction.user.id})"
 
-        # Delete every channel nested under each category first. Deleting a Discord
-        # category alone only uncategorizes its children; it does not delete them.
-        for category in list(guild.categories):
-            for channel in list(category.channels):
-                try:
-                    await channel.delete(reason=f"Friends Village full reset requested by {interaction.user}")
-                    deleted_channels += 1
-                except (discord.Forbidden, discord.HTTPException) as exc:
-                    failures.append(f"#{channel.name}: {type(exc).__name__}")
-                    log.exception("Could not delete channel %s (%s)", channel.name, channel.id)
+        # IMPORTANT: Deleting a Discord category only uncategorizes its children.
+        # Delete every channel in the guild first, including channels already
+        # uncategorized by an earlier reset, then delete all empty categories.
+        channels = [ch for ch in list(guild.channels) if not isinstance(ch, discord.CategoryChannel)]
+        for channel in channels:
             try:
-                # Only remove the category if it is now empty.
-                if not category.channels:
-                    await category.delete(reason=f"Friends Village full reset requested by {interaction.user}")
-                    deleted_categories += 1
-                else:
-                    failures.append(f"Category {category.name}: still contains channels")
+                await channel.delete(reason=reason)
+                deleted_channels += 1
+            except (discord.Forbidden, discord.HTTPException) as exc:
+                failures.append(f"{channel.name}: {type(exc).__name__}")
+                log.exception("Could not delete channel %s (%s)", channel.name, channel.id)
+
+        for category in list(guild.categories):
+            try:
+                # If any child channel could not be deleted, Discord will reject
+                # deleting the non-empty category and the failure is reported.
+                await category.delete(reason=reason)
+                deleted_categories += 1
             except (discord.Forbidden, discord.HTTPException) as exc:
                 failures.append(f"Category {category.name}: {type(exc).__name__}")
                 log.exception("Could not delete category %s (%s)", category.name, category.id)
 
         result = discord.Embed(
-            title="Server category reset finished",
+            title="Full server channel reset finished",
             description=(
-                f"Deleted **{deleted_categories}** categor(ies) and **{deleted_channels}** channel(s).\n"
-                "Channels that were not inside a category were left untouched.\n\n"
+                f"Deleted **{deleted_channels} channel(s)** and **{deleted_categories} categor(ies)**.\n"
+                "This includes channels that were not inside a category.\n\n"
                 "When you are ready, run `/setup` to create the Friends Village layout again."
             ),
             color=discord.Color.orange() if failures else discord.Color.green(),
@@ -360,7 +362,7 @@ class DeleteCategoriesConfirmView(discord.ui.View):
 
 
 # -------------------- Slash commands --------------------
-@bot.tree.command(name="delete-categories", description="Delete every category and all channels inside it (irreversible).")
+@bot.tree.command(name="delete-categories", description="Delete ALL server channels and categories (irreversible).")
 @app_commands.checks.has_permissions(administrator=True)
 @app_commands.guild_only()
 async def delete_categories(interaction: discord.Interaction):
@@ -375,22 +377,23 @@ async def delete_categories(interaction: discord.Interaction):
             ephemeral=True,
         )
 
-    channel_count = sum(len(category.channels) for category in guild.categories)
+    channel_count = sum(1 for channel in guild.channels if not isinstance(channel, discord.CategoryChannel))
+    category_count = len(guild.categories)
     embed = discord.Embed(
-        title="⚠️ Confirm full category reset",
+        title="⚠️ Confirm COMPLETE server channel reset",
         description=(
-            f"This will permanently delete **{len(guild.categories)} categories** and "
-            f"**{channel_count} channels inside those categories**.\n\n"
-            "All messages in those channels will be lost. Channels outside categories will remain. "
-            "This cannot be undone.\n\n"
-            "After it finishes, run `/setup` to create the new Friends Village categories and channels."
+            f"This will permanently delete **ALL {channel_count} channels** and "
+            f"**ALL {category_count} categories**.\n\n"
+            "This includes channels inside categories AND channels outside categories. "
+            "All messages in deleted channels will be lost. This cannot be undone.\n\n"
+            "After it finishes, run `/setup` to create the new Friends Village layout."
         ),
         color=discord.Color.red(),
     )
     log.info(
-        "Delete-categories requested by %s (%s) in guild %s (%s): %s categories, %s child channels",
+        "Full channel reset requested by %s (%s) in guild %s (%s): %s categories, %s total channels",
         interaction.user, interaction.user.id, guild.name, guild.id,
-        len(guild.categories), channel_count,
+        category_count, channel_count,
     )
     await interaction.response.send_message(
         embed=embed,

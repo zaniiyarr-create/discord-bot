@@ -56,7 +56,7 @@ Invite the bot to your server using the generated URL. Keep the bot role below s
 
 ### Administrators / moderators
 - `/setup` — creates missing Friends Village channels and categories. It DOES NOT delete existing channels or messages.
-- `/delete-categories` — administrator-only and confirmation-protected. Permanently deletes every category and all channels inside those categories (including their messages). Channels outside categories are left untouched. Run `/setup` afterward to recreate the Friends Village layout.
+- `/delete-categories` — administrator-only and confirmation-protected. Permanently deletes ALL server channels (including uncategorized text/voice channels and their messages) and then deletes all categories. This is irreversible. Run `/setup` afterward to recreate the Friends Village layout.
 - `/set-welcome channel:` — changes the welcome channel.
 - `/purge amount:` — removes 1–50 recent messages.
 - `/timeout member: minutes: reason:` 
@@ -80,4 +80,4 @@ Invite the bot to your server using the generated URL. Keep the bot role below s
 3. Channels not assigned to a category are not deleted.
 4. After the reset completes, run `/setup` to create the Friends Village categories and channels again.
 
-The reset requires the bot's **Manage Channels** permission. Discord may prevent deletion of channels/categories the bot cannot manage due to role hierarchy or channel permissions; any such failures are reported in the result.
+The reset requires the bot's **Manage Channels** permission. It deletes every channel in the server, including channels that are not inside a category, before deleting categories. Discord may prevent deletion of channels/categories the bot cannot manage due to permissions or server restrictions; any such failures are reported in the result.
