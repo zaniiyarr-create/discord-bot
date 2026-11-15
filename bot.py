@@ -15,38 +15,38 @@ VOICE_CHANNEL_ID = 1174375300134613089
 @bot.event
 async def on_ready():
     print(f"بۆت ب سەرکەفتن وەک {bot.user} ڤەبوو!")
-    
-    # چوونە ناو کانالێ ب خۆکار دەما بۆت دەست پێدکەت
     if VOICE_CHANNEL_ID != 0:
         channel = bot.get_channel(VOICE_CHANNEL_ID)
         if channel and isinstance(channel, discord.VoiceChannel):
             try:
                 await channel.connect(self_deaf=True)
-                print(f"بۆت ب سەرکەفتن چوو ناو کانالا: {channel.name} و بەخۆ میوت بوو.")
+                print(f"بۆت ب سەرکەفتن چوو ناو کانالا: {channel.name}")
             except Exception as e:
-                print(f"نەشییا بچیتە ناو کانالێ: {e}")
+                print(f"تێبینی دەنگ: {e}")
 
-# فەرمان بۆ چوونە ناو وێ کانالا تو تێدا 
 @bot.command()
 async def join(ctx):
     if ctx.author.voice:
         channel = ctx.author.voice.channel
-        # self_deaf=True وای ل بۆت دکەت کە ل ناو Callێدا میوت و بێدەنگ بیت
-        await channel.connect(self_deaf=True)
-        await ctx.send(f"ئەز هاتمە ناو کانالا: {channel.name} و میوت مە.")
+        try:
+            if ctx.voice_client:
+                await ctx.voice_client.move_to(channel)
+            else:
+                await channel.connect(self_deaf=True)
+            await ctx.send(f"✅ بۆت هاتە ناو کانالا: {channel.name}")
+        except Exception as e:
+            await ctx.send(f"❌ هەڵە لە چوونە ناو تێلێ: {e}")
     else:
-        await ctx.send("تۆ نەد ناو چ Call یا یان Voice Channel دا!")
+        await ctx.send("❌ تو لە ناو هیچ Voice Channelـەکدا نینەی!")
 
-# فەرمان بۆ دەرکەتنا بۆتی ژ Callێ
 @bot.command()
 async def leave(ctx):
     if ctx.voice_client:
         await ctx.voice_client.disconnect()
-        await ctx.send("ئەز ژ Call دەرکەتم.")
+        await ctx.send("✅ بۆت لە Call دەرکەوت.")
     else:
-        await ctx.send("بۆت د ناو چ Call دا نینە!")
+        await ctx.send("❌ بۆت لە هیچ Callـەکدا نینە!")
 
-# فەرمانا خودکار بۆ دروستکرنا سێرڤەری وەک وێنەیان
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def setup(ctx):
@@ -135,25 +135,25 @@ async def setup(ctx):
         ]
     }
 
-    for cat_name, channels in structure.items():
-        category = await guild.create_category(cat_name)
-        for ch_type, ch_name in channels:
-            if ch_type == "text":
-                await guild.create_text_channel(ch_name, category=category)
-            elif ch_type == "voice":
-                await guild.create_voice_channel(ch_name, category=category)
-
-    await ctx.send("✅ هەموو کاتەگۆری و کانال ب سەرکەفتن وەک وێنەیان هاتنە دروستکرن!")
+    try:
+        for cat_name, channels in structure.items():
+            category = await guild.create_category(cat_name)
+            for ch_type, ch_name in channels:
+                if ch_type == "text":
+                    await guild.create_text_channel(ch_name, category=category)
+                elif ch_type == "voice":
+                    await guild.create_voice_channel(ch_name, category=category)
+        await ctx.send("✅ هەموو کاتەگۆری و کانال ب سەرکەفتن وەک وێنەیان هاتنە دروستکرن!")
+    except discord.Forbidden:
+        await ctx.send("❌ هەڵە: بۆت دەستهەڵاتا پێدڤی (`Administrator` یا `Manage Channels`) لە سێرڤەریدا نینە!")
+    except Exception as e:
+        await ctx.send(f"❌ هەڵەیەک ڕووی دا: {e}")
 
 @setup.error
 async def setup_error(ctx, error):
     if isinstance(error, commands.MissingPermissions):
-        await ctx.send("❌ تو دەستهەڵاتا Adminـت نینە بۆ ڤی کاری!")
+        await ctx.send("❌ تو دەستهەڵاتا Adminـت نینە بۆ کارپێکرنا ڤی فەرمانێ!")
 
-# وەرگرتنا Token-ا بۆتێ
 TOKEN = os.getenv("TOKEN")
-
-if not TOKEN:
-    print("هەڵە: Token نەهاتییە دیتن! دڤێت ل Railway پشکا Variables زێدە بکەی.")
-else:
+if TOKEN:
     bot.run(TOKEN)
