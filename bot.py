@@ -9,7 +9,7 @@ intents.guilds = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ID یا کانالا دەنگی یا تە بۆ مانەوەیا ٢٤/٧:
+# ID یا کانالا دەنگی یا تە:
 VOICE_CHANNEL_ID = 1174375300134613089
 
 @bot.event
@@ -21,7 +21,7 @@ async def on_ready():
         channel = bot.get_channel(VOICE_CHANNEL_ID)
         if channel and isinstance(channel, discord.VoiceChannel):
             try:
-                await channel.connect(self_deafen=True)
+                await channel.connect(self_deaf=True)
                 print(f"بۆت ب سەرکەفتن چوو ناو کانالا: {channel.name} و بەخۆ میوت بوو.")
             except Exception as e:
                 print(f"نەشییا بچیتە ناو کانالێ: {e}")
@@ -31,7 +31,8 @@ async def on_ready():
 async def join(ctx):
     if ctx.author.voice:
         channel = ctx.author.voice.channel
-        await channel.connect(self_deafen=True)
+        # self_deaf=True وای ل بۆت دکەت کە ل ناو Callێدا میوت و بێدەنگ بیت
+        await channel.connect(self_deaf=True)
         await ctx.send(f"ئەز هاتمە ناو کانالا: {channel.name} و میوت مە.")
     else:
         await ctx.send("تۆ نەد ناو چ Call یا یان Voice Channel دا!")
