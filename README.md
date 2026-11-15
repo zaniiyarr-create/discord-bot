@@ -1,7 +1,7 @@
 # Friends Village Bot V2.0
 
-A Discord.py bot with safe server setup, welcome messages, support tickets,
-basic moderation, slash commands, and SQLite settings.
+A Discord.py bot with safe server setup, welcome messages, persistent support-ticket buttons,
+basic moderation, slash commands, and SQLite settings. The startup hook syncs application commands automatically.
 
 ## Security first
 
@@ -19,7 +19,8 @@ basic moderation, slash commands, and SQLite settings.
    - `DATABASE_PATH` = `/data/friends_village.db`
 4. Add a Railway Volume and mount it at `/data` so SQLite settings persist across redeployments.
 5. Deploy. The included Nixpacks configuration starts `python bot.py`.
-6. Open the deployment logs. A successful start logs `Logged in as ...`.
+6. On startup, the bot syncs its slash commands and registers persistent ticket buttons.
+7. Open the deployment logs. A successful start logs `Successfully synced ... application command(s)` and `Logged in as ...`.
 
 ## Discord Developer Portal
 
@@ -68,5 +69,5 @@ Invite the bot to your server using the generated URL. Keep the bot role below s
 
 - `/setup` is non-destructive and can be run more than once.
 - Existing channels and messages are not removed.
-- SQLite stores the welcome-channel setting. Use a Railway Volume mounted at `/data` to persist the database.
+- SQLite stores the welcome-channel setting using WAL mode and a 30-second busy timeout. Use a Railway Volume mounted at `/data` and set `DATABASE_PATH=/data/friends_village.db` to persist the database. Without a persistent volume, settings may be lost when the container is replaced.
 - The bot uses slash commands, so it does not need Message Content Intent.

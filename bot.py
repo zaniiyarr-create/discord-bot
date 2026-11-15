@@ -25,18 +25,34 @@ intents.guilds = True
 intents.members = True  # Enable Server Members Intent in Discord Developer Portal.
 
 # Slash commands are used, so Message Content Intent is not required.
-bot = commands.Bot(command_prefix="!", intents=intents)
+class FriendsVillageBot(commands.Bot):
+    async def setup_hook(self):
+        """Register persistent component views and publish slash commands once per startup."""
+        self.add_view(TicketPanelView())
+        self.add_view(CloseTicketView())
+        try:
+            synced = await self.tree.sync()
+            log.info("Successfully synced %s application command(s)", len(synced))
+        except discord.HTTPException:
+            log.exception("Failed to sync application commands")
+            raise
+
+
+bot = FriendsVillageBot(command_prefix="!", intents=intents)
 
 
 # -------------------- SQLite configuration --------------------
 def db_connect():
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30)
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 30000")
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def init_db():
     with db_connect() as conn:
+        conn.execute("PRAGMA journal_mode = WAL")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS guild_settings (
                 guild_id INTEGER PRIMARY KEY,
@@ -74,6 +90,8 @@ async def ensure_category(
 ) -> discord.CategoryChannel:
     existing = discord.utils.get(guild.categories, name=name)
     if existing:
+        if overwrites is not None:
+            await existing.edit(overwrites=overwrites, reason="Friends Village setup: enforce category permissions")
         return existing
     return await guild.create_category(name, overwrites=overwrites, reason="Friends Village setup")
 
@@ -125,20 +143,27 @@ class TicketPanelView(discord.ui.View):
         if guild is None:
             return await interaction.response.send_message("This button only works in a server.", ephemeral=True)
 
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
         existing = discord.utils.find(
             lambda c: isinstance(c, discord.TextChannel)
             and c.topic == f"ticket-owner:{interaction.user.id}",
             guild.text_channels,
         )
         if existing:
-            return await interaction.response.send_message(
-                f"You already have an open ticket: {existing.mention}",
-                ephemeral=True,
+            return await interaction.followup.send(
+                f"You already have an open ticket: {existing.mention}", ephemeral=True
             )
 
         category = discord.utils.get(guild.categories, name="🎫 TICKETS")
         if category is None:
             category = await guild.create_category("🎫 TICKETS", reason="Ticket system")
+
+        bot_member = guild.me
+        if bot_member is None and bot.user is not None:
+            bot_member = guild.get_member(bot.user.id)
+        if bot_member is None:
+            return await interaction.followup.send("I could not verify my server permissions. Please try again shortly.", ephemeral=True)
 
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False),
@@ -146,12 +171,13 @@ class TicketPanelView(discord.ui.View):
                 view_channel=True, send_messages=True, read_message_history=True,
                 attach_files=True, embed_links=True,
             ),
-            guild.me: discord.PermissionOverwrite(
+            bot_member: discord.PermissionOverwrite(
                 view_channel=True, send_messages=True, read_message_history=True,
                 manage_channels=True,
             ),
         }
-        safe_name = f"ticket-{interaction.user.name}".lower().replace(" ", "-")[:80]
+        safe_name = f"ticket-{interaction.user.name}".lower().replace(" ", "-")[:65]
+        safe_name = f"{safe_name}-{str(interaction.user.id)[-6:]}"
         channel = await guild.create_text_channel(
             safe_name,
             category=category,
@@ -169,7 +195,7 @@ class TicketPanelView(discord.ui.View):
             embed=embed,
             view=CloseTicketView(),
         )
-        await interaction.response.send_message(f"Your ticket is ready: {channel.mention}", ephemeral=True)
+        await interaction.followup.send(f"Your ticket is ready: {channel.mention}", ephemeral=True)
 
 
 class CloseTicketView(discord.ui.View):
@@ -309,7 +335,7 @@ async def setup(interaction: discord.Interaction):
         guild.default_role: discord.PermissionOverwrite(view_channel=False)
     }
     staff_category = await ensure_category(guild, "🔒 STAFF AREA", staff_overwrites)
-    await ensure_text_channel(guild, staff_category, "📋・staff-logs")
+    staff_logs = await ensure_text_channel(guild, staff_category, "📋・staff-logs")
 
     set_welcome_channel(guild.id, welcome.id)
     await send_ticket_panel(support)
@@ -320,7 +346,7 @@ async def setup(interaction: discord.Interaction):
             "Created any missing channels and categories. Existing channels and messages were left untouched.\n\n"
             f"Welcome channel: {welcome.mention}\n"
             f"Ticket panel: {support.mention}\n"
-            f"Staff logs: {staff_category.text_channels[0].mention if staff_category.text_channels else 'Created'}"
+            f"Staff logs: {staff_logs.mention}"
         ),
         color=discord.Color.green(),
     )
@@ -384,7 +410,7 @@ async def kick_member(interaction: discord.Interaction, member: discord.Member, 
 async def ban_member(interaction: discord.Interaction, member: discord.Member, reason: Optional[str] = None):
     if member.id == interaction.user.id or member.guild_permissions.administrator:
         return await interaction.response.send_message("That member cannot be banned with this command.", ephemeral=True)
-    await member.ban(reason=reason, delete_message_days=0)
+    await member.ban(reason=reason, delete_message_seconds=0)
     await interaction.response.send_message(f"Banned {member.mention}.", ephemeral=True)
 
 
@@ -417,8 +443,6 @@ async def main():
 
     init_db()
     async with bot:
-        bot.add_view(TicketPanelView())
-        bot.add_view(CloseTicketView())
         await bot.start(TOKEN)
 
 
