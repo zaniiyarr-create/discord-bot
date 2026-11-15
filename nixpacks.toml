@@ -1,2 +1,2 @@
 [phases.setup]
-aptPkgs = ["libsodium-dev", "gcc", "g++"]
+nixPkgs = ["libsodium"]
