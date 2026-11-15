@@ -2,18 +2,19 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# دامەزراندنا پاکێجێن سیستەمی یێن پێدڤی بۆ دەنگی
+# دامەزراندنا بنەمایێن سیستەمی و libsodium بۆ دەنگی
 RUN apt-get update && apt-get install -y \
+    build-essential \
     libsodium-dev \
-    gcc \
-    g++ \
+    libffi-dev \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# گوهەستنا فایلێن پڕۆژەی
+# دامەزراندنا پاکێجێن پایتۆنی
 COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# کارپێکرنا بۆتی
 CMD ["python", "bot.py"]
