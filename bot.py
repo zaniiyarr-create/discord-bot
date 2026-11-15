@@ -15,5 +15,4 @@ async def on_ready():
 async def join(ctx):
     await ctx.send("✅ بۆت ئامادەیە و لە خزمەت تەدایە!")
 
-# توکەنەکەی خۆت ڕاستەوخۆ لێرە دابنە بێ کێشە:
 bot.run("MTU3MDkxODY3MTgwNTcxODY5OQ.GqW91u.dL2UbQIYWvKi1iZRBOmMsopmYN9_x4-DthS4WQ")
