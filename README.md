@@ -4,7 +4,7 @@ Bilingual English + Kurdish Discord community bot built with discord.py 2.6.4 an
 
 ## Features
 - Luxury gold-themed embeds and bilingual welcome messages.
-- Safe, repeatable `/setup` for community, gaming, voice, forum, VIP, staff and ticket channels.
+- Safe, repeatable `/setup` for Welcome, Community, Gaming, Creative World, Events, Voice, Forums, VIP, Staff and Tickets. Includes forum starter tags and duplicate-safe channel/category lookup.
 - Persistent support tickets with close controls.
 - Moderation: `/purge`, `/timeout`, `/kick`, `/ban`, `/warn`, `/warnings`, `/clear-warnings`.
 - Audit log channel: `/set-log`, message edit/delete and member departure logs.
@@ -27,8 +27,10 @@ Set `DISCORD_TOKEN`. Optional: `DATABASE_PATH=data/friends_village.db`, `LOG_LEV
 1. Run `/setup` as an administrator.
 2. Run `/set-log` and choose the private `#staff-logs` channel.
 3. Optionally run `/set-autorole`.
+4. Assign trusted people to `Village Staff` and VIP members to `Village VIP`.
+5. Review the generated public/private permissions and customize the forum tags as needed.
 4. Use `/automod enabled:true` and `/leveling enabled:true` as desired.
-5. Assign trusted people to `Village Staff` and VIPs to `Village VIP`.
+
 
 ## Railway
 Start command: `python bot.py`. Set `DISCORD_TOKEN`, `DATABASE_PATH=/data/friends_village.db`, `LOG_LEVEL=INFO`, and attach a persistent Volume mounted at `/data`.

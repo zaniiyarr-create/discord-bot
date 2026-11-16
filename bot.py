@@ -225,6 +225,7 @@ async def ensure_forum_channel(
     category: discord.CategoryChannel,
     name: str,
     topic: Optional[str] = None,
+    tags: Optional[list[str]] = None,
 ) -> discord.ForumChannel:
     # CategoryChannel has .channels, not .forum_channels, in discord.py.
     # Search guild.channels so forum channels are found regardless of category.
@@ -232,16 +233,24 @@ async def ensure_forum_channel(
         lambda ch: isinstance(ch, discord.ForumChannel) and ch.name == name,
         guild.channels,
     )
+    tag_objects = [discord.ForumTag(name=tag[:20]) for tag in (tags or [])[:20]]
     if existing:
+        edits = {}
         if existing.category_id != category.id:
-            await existing.edit(category=category, reason="Friends Village setup: keep layout in sync")
+            edits["category"] = category
         if topic and existing.topic != topic:
-            await existing.edit(topic=topic, reason="Friends Village setup: update forum topic")
+            edits["topic"] = topic
+        # Add starter tags only to a forum that has none; never overwrite user tags.
+        if tag_objects and not existing.available_tags:
+            edits["available_tags"] = tag_objects
+        if edits:
+            await existing.edit(**edits, reason="Friends Village setup: keep layout in sync")
         return existing
     return await guild.create_forum(
         name,
         category=category,
         topic=topic,
+        available_tags=tag_objects,
         reason="Friends Village setup",
     )
 
@@ -495,6 +504,8 @@ async def setup(interaction: discord.Interaction):
         everyone: discord.PermissionOverwrite(
             view_channel=True,
             send_messages=True,
+            send_messages_in_threads=True,
+            create_public_threads=True,
             read_message_history=True,
             connect=True,
             speak=True,
@@ -520,8 +531,25 @@ async def setup(interaction: discord.Interaction):
     gaming_cat = await ensure_category(guild, "🎮・GAMING", public_overwrites)
     await ensure_text_channel(guild, gaming_cat, "🎮・gaming-chat", "Talk about games and gaming news.")
     await ensure_text_channel(guild, gaming_cat, "👥・find-a-team", "Find people to play with.")
+    await ensure_text_channel(guild, gaming_cat, "🏆・game-results", "Share your wins, scores and achievements.")
+    await ensure_text_channel(guild, gaming_cat, "📰・gaming-news", "Gaming updates, releases and news.")
 
-    # 04 — Voice lounge
+    # 04 — Creative world
+    creative_cat = await ensure_category(guild, "🎨・CREATIVE WORLD", public_overwrites)
+    await ensure_text_channel(guild, creative_cat, "🎨・art-gallery", "Share your artwork and creative projects.")
+    await ensure_text_channel(guild, creative_cat, "📷・photography", "Share photography and visual moments.")
+    await ensure_text_channel(guild, creative_cat, "🎬・clips-and-videos", "Share your favorite clips and videos.")
+    await ensure_text_channel(guild, creative_cat, "🎵・music-corner", "Talk about music and share recommendations.")
+    await ensure_text_channel(guild, creative_cat, "😂・memes-and-fun", "Memes, jokes and good vibes.")
+
+    # 05 — Events and activities
+    events_cat = await ensure_category(guild, "🎉・EVENTS & ACTIVITIES", public_overwrites)
+    await ensure_text_channel(guild, events_cat, "📅・events", "Official events and community activities.")
+    await ensure_text_channel(guild, events_cat, "🎁・giveaways", "Community giveaways and prizes.")
+    await ensure_text_channel(guild, events_cat, "🏅・competitions", "Challenges, tournaments and competitions.")
+    await ensure_text_channel(guild, events_cat, "📊・polls", "Community polls and decisions.")
+
+    # 06 — Voice lounge
     voice_cat = await ensure_category(guild, "🎙️・VOICE LOUNGE", public_overwrites)
     await ensure_voice_channel(guild, voice_cat, "🔊・General Lounge")
     await ensure_voice_channel(guild, voice_cat, "☕・Chill Room")
@@ -531,11 +559,13 @@ async def setup(interaction: discord.Interaction):
 
     # 05 — Forums
     forum_cat = await ensure_category(guild, "🧵・COMMUNITY FORUMS", public_overwrites)
-    await ensure_forum_channel(guild, forum_cat, "💬・community-discussions", "Start a topic and discuss it with the community.")
-    await ensure_forum_channel(guild, forum_cat, "❓・questions-and-help", "Ask questions and help other members.")
-    await ensure_forum_channel(guild, forum_cat, "🎨・showcase", "Share projects, art, screenshots and achievements.")
+    await ensure_forum_channel(guild, forum_cat, "💬・community-discussions", "Start a topic and discuss it with the community.", ["Discussion", "Question", "Poll", "Important"])
+    await ensure_forum_channel(guild, forum_cat, "❓・questions-and-help", "Ask questions and help other members.", ["Unanswered", "Answered", "Technical", "Guidance"])
+    await ensure_forum_channel(guild, forum_cat, "🎨・showcase", "Share projects, art, screenshots and achievements.", ["Artwork", "Photography", "Video", "Achievement"])
+    await ensure_forum_channel(guild, forum_cat, "💡・community-ideas", "Suggest new activities and improvements for Friends Village.", ["Suggestion", "Under Review", "Approved", "Declined"])
+    await ensure_forum_channel(guild, forum_cat, "🎮・game-discussions", "Game reviews, recommendations and gaming discussions.", ["PC", "Console", "Mobile", "Looking For Group"])
 
-    # 06 — Private VIP area. Only VIP, staff and administrators can view it.
+    # 07 — Private VIP area. Only VIP, staff and administrators can view it.
     private_overwrites = {
         everyone: discord.PermissionOverwrite(view_channel=False),
         vip_role: discord.PermissionOverwrite(
@@ -569,7 +599,7 @@ async def setup(interaction: discord.Interaction):
     await ensure_text_channel(guild, private_cat, "📸・vip-media", "A private space for VIP media.")
     await ensure_voice_channel(guild, private_cat, "🔐・VIP Voice")
 
-    # 07 — Staff area
+    # 08 — Staff area
     staff_overwrites = {
         everyone: discord.PermissionOverwrite(view_channel=False),
         staff_role: discord.PermissionOverwrite(
@@ -591,7 +621,7 @@ async def setup(interaction: discord.Interaction):
     await ensure_text_channel(guild, staff_cat, "💬・staff-chat")
     await ensure_voice_channel(guild, staff_cat, "🔊・Staff Voice")
 
-    # 08 — Support tickets
+    # 09 — Support tickets
     ticket_cat = await ensure_category(guild, "🎫・SUPPORT TICKETS", public_overwrites)
     support = await ensure_text_channel(guild, ticket_cat, "🎫・create-a-ticket")
     await send_ticket_panel(support)
@@ -602,7 +632,7 @@ async def setup(interaction: discord.Interaction):
         title="✨ Friends Village — Luxury Setup Complete",
         description=(
             "The server layout is ready. Existing channels and messages were not deleted.\n\n"
-            "**Public areas:** Welcome, Community, Gaming, Voice Lounge and Forums.\n"
+            "**Public areas:** Welcome, Community, Gaming, Creative World, Events, Voice Lounge and Forums.\n"
             "**Private areas:** VIP Private Lounge and Staff Control.\n"
             "**Support:** Ticket panel is ready.\n\n"
             f"Welcome channel: {welcome.mention}\n"
