@@ -1,5 +1,6 @@
 import os
 import logging
+import re
 import sqlite3
 from datetime import timedelta
 from pathlib import Path
@@ -23,8 +24,9 @@ log = logging.getLogger("friends-village")
 intents = discord.Intents.default()
 intents.guilds = True
 intents.members = True  # Enable Server Members Intent in Discord Developer Portal.
+intents.message_content = True  # Required for AutoMod and XP.
 
-# Slash commands are used, so Message Content Intent is not required.
+# Message Content Intent is used by AutoMod and XP; enable it in the Developer Portal.
 class FriendsVillageBot(commands.Bot):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -81,6 +83,23 @@ def init_db():
                 welcome_channel_id INTEGER
             )
         """)
+        conn.execute("""CREATE TABLE IF NOT EXISTS member_settings (
+            guild_id INTEGER PRIMARY KEY, log_channel_id INTEGER, autorole_id INTEGER,
+            automod_enabled INTEGER NOT NULL DEFAULT 1, leveling_enabled INTEGER NOT NULL DEFAULT 1
+        )""")
+        conn.execute("""CREATE TABLE IF NOT EXISTS warnings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, guild_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
+            moderator_id INTEGER NOT NULL, reason TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""")
+        conn.execute("""CREATE TABLE IF NOT EXISTS member_xp (
+            guild_id INTEGER NOT NULL, user_id INTEGER NOT NULL, xp INTEGER NOT NULL DEFAULT 0,
+            level INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (guild_id,user_id)
+        )""")
+        conn.execute("""CREATE TABLE IF NOT EXISTS mod_cases (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, guild_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
+            moderator_id INTEGER NOT NULL, action TEXT NOT NULL, reason TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""")
         conn.commit()
 
 
@@ -103,6 +122,43 @@ def get_welcome_channel(guild_id: int) -> Optional[int]:
         ).fetchone()
     return int(row["welcome_channel_id"]) if row and row["welcome_channel_id"] else None
 
+
+
+# -------------------- Luxury edition helpers --------------------
+GOLD = discord.Color.from_rgb(212, 175, 55)
+BRONZE = discord.Color.from_rgb(145, 110, 30)
+_spam_times = {}
+_xp_cooldowns = {}
+
+def settings_for(guild_id: int) -> dict:
+    with db_connect() as conn:
+        conn.execute("INSERT OR IGNORE INTO member_settings (guild_id) VALUES (?)", (guild_id,))
+        row = conn.execute("SELECT * FROM member_settings WHERE guild_id=?", (guild_id,)).fetchone()
+        conn.commit()
+    return dict(row)
+
+def set_setting(guild_id: int, field: str, value):
+    if field not in {"log_channel_id", "autorole_id", "automod_enabled", "leveling_enabled"}:
+        raise ValueError("Unsupported setting")
+    with db_connect() as conn:
+        conn.execute("INSERT OR IGNORE INTO member_settings (guild_id) VALUES (?)", (guild_id,))
+        conn.execute(f"UPDATE member_settings SET {field}=? WHERE guild_id=?", (value, guild_id))
+        conn.commit()
+
+def xp_threshold(level: int) -> int:
+    return 100 * level * (level + 1)
+
+async def audit(guild: discord.Guild, title: str, description: str):
+    channel_id = settings_for(guild.id).get("log_channel_id")
+    channel = guild.get_channel(channel_id or 0)
+    if isinstance(channel, discord.TextChannel):
+        try:
+            embed = discord.Embed(title=f"✦ {title}", description=description[:4000], color=GOLD,
+                                  timestamp=discord.utils.utcnow())
+            embed.set_footer(text="Friends Village • Luxury Audit")
+            await channel.send(embed=embed)
+        except discord.HTTPException:
+            log.exception("Unable to send audit log")
 
 # -------------------- Helpers --------------------
 async def ensure_category(
@@ -213,7 +269,7 @@ async def send_ticket_panel(channel: discord.TextChannel):
     embed = discord.Embed(
         title="Friends Village Support",
         description="Need help? Press the button below to create a private support ticket.",
-        color=discord.Color.blurple(),
+        color=GOLD,
     )
     await channel.send(embed=embed, view=TicketPanelView())
 
@@ -279,7 +335,7 @@ class TicketPanelView(discord.ui.View):
         embed = discord.Embed(
             title="Support ticket",
             description=f"Hello {interaction.user.mention}! Describe what you need help with. A moderator will assist you.",
-            color=discord.Color.green(),
+            color=GOLD,
         )
         await channel.send(
             content=interaction.user.mention,
@@ -336,9 +392,10 @@ async def on_member_join(member: discord.Member):
     channel = member.guild.get_channel(channel_id)
     if isinstance(channel, discord.TextChannel):
         embed = discord.Embed(
-            title="Welcome to Friends Village! ✨",
-            description=f"Welcome {member.mention}! Make yourself at home and enjoy the community.",
-            color=discord.Color.green(),
+            title="✦ Welcome to Friends Village | بەخێربێیت ✦",
+            description=(f"Welcome {member.mention}! Make yourself at home.\\n"
+                         f"بەخێربێیت {member.mention}! هیڤیدارین کاتەکە تە خۆش بیت."),
+            color=GOLD,
         )
         embed.set_thumbnail(url=member.display_avatar.url)
         try:
@@ -361,7 +418,7 @@ async def help_command(interaction: discord.Interaction):
     embed = discord.Embed(
         title="Friends Village — Help",
         description="Community tools and server management.",
-        color=discord.Color.blurple(),
+        color=GOLD,
     )
     embed.add_field(name="Everyone", value="`/ping` · `/serverinfo` · `/userinfo`", inline=False)
     embed.add_field(name="Support", value="Use the **Create a ticket** button in #support-tickets.", inline=False)
@@ -378,7 +435,7 @@ async def serverinfo(interaction: discord.Interaction):
     guild = interaction.guild
     if guild is None:
         return await interaction.response.send_message("Use this command inside a server.", ephemeral=True)
-    embed = discord.Embed(title=guild.name, color=discord.Color.blurple())
+    embed = discord.Embed(title=guild.name, color=GOLD)
     if guild.icon:
         embed.set_thumbnail(url=guild.icon.url)
     embed.add_field(name="Members", value=str(guild.member_count or "Unknown"))
@@ -392,7 +449,7 @@ async def serverinfo(interaction: discord.Interaction):
 @app_commands.describe(member="The member to inspect (defaults to you).")
 async def userinfo(interaction: discord.Interaction, member: Optional[discord.Member] = None):
     member = member or interaction.user
-    embed = discord.Embed(title=f"User: {member}", color=discord.Color.blurple())
+    embed = discord.Embed(title=f"User: {member}", color=GOLD)
     embed.set_thumbnail(url=member.display_avatar.url)
     embed.add_field(name="Account created", value=discord.utils.format_dt(member.created_at, style="D"))
     if isinstance(member, discord.Member):
@@ -430,7 +487,7 @@ async def setup(interaction: discord.Interaction):
 
     # Create dedicated access roles. Assign members to these roles manually.
     vip_role = await ensure_role(guild, "Village VIP", discord.Color.gold())
-    staff_role = await ensure_role(guild, "Village Staff", discord.Color.from_rgb(126, 87, 194))
+    staff_role = await ensure_role(guild, "Village Staff", GOLD)
 
     everyone = guild.default_role
 
@@ -553,7 +610,7 @@ async def setup(interaction: discord.Interaction):
             f"Staff logs: {staff_logs.mention}\n\n"
             "**Next step:** Assign members to `Village VIP` and trusted moderators to `Village Staff`."
         ),
-        color=discord.Color.from_rgb(126, 87, 194),
+        color=GOLD,
     )
     embed.set_footer(text="Friends Village • A place to belong")
     await interaction.followup.send(embed=embed, ephemeral=True)
@@ -636,6 +693,253 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
             await interaction.followup.send(message, ephemeral=True)
         else:
             await interaction.response.send_message(message, ephemeral=True)
+    except discord.HTTPException:
+        pass
+
+
+
+# -------------------- Bilingual community and security systems --------------------
+@bot.event
+async def on_message(message: discord.Message):
+    if message.guild is None or message.author.bot:
+        return
+    guild, member = message.guild, message.author
+    config = settings_for(guild.id)
+    now = int(discord.utils.utcnow().timestamp())
+    key = (guild.id, member.id)
+
+    # Simple anti-flood and link filter. Exempt moderators.
+    if config["automod_enabled"] and not member.guild_permissions.manage_messages:
+        recent = [t for t in _spam_times.get(key, []) if now - t <= 8]
+        recent.append(now)
+        _spam_times[key] = recent[-8:]
+        if re.search(r"(https?://|www\\.|discord\\.gg/)", message.content, re.I):
+            try:
+                await message.delete()
+                await message.channel.send(
+                    f"{member.mention} Links are restricted here. | لینک ل ڤێرێ قەدەغەیە.",
+                    delete_after=5
+                )
+                await audit(guild, "AutoMod • Link blocked", f"Member: {member.mention}\\nChannel: {message.channel.mention}")
+            except discord.Forbidden:
+                pass
+            return
+        if len(recent) >= 6:
+            try:
+                await message.delete()
+                await member.timeout(discord.utils.utcnow() + timedelta(seconds=30), reason="AutoMod flood protection")
+                await audit(guild, "AutoMod • Flood detected", f"Member: {member.mention}\\nAction: 30-second timeout")
+            except discord.Forbidden:
+                pass
+            _spam_times[key] = []
+
+    # One XP award per user per 60 seconds.
+    if config["leveling_enabled"] and now - _xp_cooldowns.get(key, 0) >= 60:
+        import random
+        gained = random.randint(12, 22)
+        with db_connect() as conn:
+            conn.execute("INSERT OR IGNORE INTO member_xp (guild_id,user_id) VALUES (?,?)", key)
+            row = conn.execute("SELECT xp,level FROM member_xp WHERE guild_id=? AND user_id=?", key).fetchone()
+            total, old_level = int(row["xp"]) + gained, int(row["level"])
+            new_level = old_level
+            while total >= xp_threshold(new_level + 1):
+                new_level += 1
+            conn.execute("UPDATE member_xp SET xp=?,level=? WHERE guild_id=? AND user_id=?",
+                         (total, new_level, guild.id, member.id))
+            conn.commit()
+        _xp_cooldowns[key] = now
+        if new_level > old_level:
+            await message.channel.send(
+                f"✨ {member.mention} reached **Level {new_level}**! | پیرۆزە، گەهشتی ئاستی **{new_level}**."
+            )
+    await bot.process_commands(message)
+
+
+@bot.tree.command(name="warn", description="Issue a formal warning to a member.")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(moderate_members=True)
+async def warn_member(interaction: discord.Interaction, member: discord.Member, reason: str):
+    if member.id == interaction.user.id or member.bot:
+        return await interaction.response.send_message("You cannot warn this member.", ephemeral=True)
+    with db_connect() as conn:
+        conn.execute("INSERT INTO warnings (guild_id,user_id,moderator_id,reason) VALUES (?,?,?,?)",
+                     (interaction.guild_id, member.id, interaction.user.id, reason[:500]))
+        count = conn.execute("SELECT COUNT(*) FROM warnings WHERE guild_id=? AND user_id=?",
+                             (interaction.guild_id, member.id)).fetchone()[0]
+        conn.commit()
+    await audit(interaction.guild, "Member warned", f"Member: {member.mention}\\nModerator: {interaction.user.mention}\\nReason: {reason}")
+    await interaction.response.send_message(f"⚠️ {member.mention} warned. Total warnings: **{count}**.", ephemeral=True)
+
+
+@bot.tree.command(name="warnings", description="View a member's warning history.")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(moderate_members=True)
+async def show_warnings(interaction: discord.Interaction, member: discord.Member):
+    with db_connect() as conn:
+        rows = conn.execute("SELECT moderator_id,reason,created_at FROM warnings WHERE guild_id=? AND user_id=? ORDER BY id DESC LIMIT 10",
+                            (interaction.guild_id, member.id)).fetchall()
+    embed = discord.Embed(title=f"Warnings • {member}", color=GOLD)
+    embed.description = "\\n".join(f"• <@{r['moderator_id']}> — {r['created_at']}\\n{r['reason']}" for r in rows) or "No warnings. | هیچ ئاگەهدارییەک نییە."
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@bot.tree.command(name="clear-warnings", description="Clear a member's warning history.")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(administrator=True)
+async def clear_warnings(interaction: discord.Interaction, member: discord.Member):
+    with db_connect() as conn:
+        cur = conn.execute("DELETE FROM warnings WHERE guild_id=? AND user_id=?", (interaction.guild_id, member.id))
+        conn.commit()
+    await interaction.response.send_message(f"Removed **{cur.rowcount}** warning(s) for {member.mention}.", ephemeral=True)
+
+
+@bot.tree.command(name="rank", description="Show a member's XP and level.")
+@app_commands.guild_only()
+async def rank(interaction: discord.Interaction, member: Optional[discord.Member] = None):
+    member = member or interaction.user
+    with db_connect() as conn:
+        row = conn.execute("SELECT xp,level FROM member_xp WHERE guild_id=? AND user_id=?",
+                           (interaction.guild_id, member.id)).fetchone()
+    xp, level = (int(row["xp"]), int(row["level"])) if row else (0, 0)
+    start, end = xp_threshold(level), xp_threshold(level + 1)
+    progress, needed = max(0, xp - start), max(1, end - start)
+    blocks = min(10, int(progress / needed * 10))
+    embed = discord.Embed(title=f"✦ Village Rank • {member.display_name}", color=GOLD)
+    embed.set_thumbnail(url=member.display_avatar.url)
+    embed.add_field(name="Level / ئاست", value=str(level))
+    embed.add_field(name="Total XP", value=f"{xp:,}")
+    embed.add_field(name="Progress", value=f"`{'▰'*blocks}{'▱'*(10-blocks)}` {progress:,}/{needed:,}", inline=False)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@bot.tree.command(name="leaderboard", description="Show the top 10 members by XP.")
+@app_commands.guild_only()
+async def leaderboard(interaction: discord.Interaction):
+    with db_connect() as conn:
+        rows = conn.execute("SELECT user_id,xp,level FROM member_xp WHERE guild_id=? ORDER BY xp DESC LIMIT 10",
+                            (interaction.guild_id,)).fetchall()
+    embed = discord.Embed(title="🏆 Friends Village • Leaderboard", color=GOLD)
+    embed.description = "\\n".join(f"**{i}.** <@{r['user_id']}> — Level **{r['level']}** · {r['xp']:,} XP"
+                                    for i, r in enumerate(rows, 1)) or "No XP yet — start chatting!"
+    await interaction.response.send_message(embed=embed)
+
+
+@bot.tree.command(name="set-log", description="Set the moderation and audit log channel.")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(administrator=True)
+async def set_log(interaction: discord.Interaction, channel: discord.TextChannel):
+    set_setting(interaction.guild_id, "log_channel_id", channel.id)
+    await interaction.response.send_message(f"Audit logs will be sent to {channel.mention}.", ephemeral=True)
+
+
+@bot.tree.command(name="set-autorole", description="Set the role automatically assigned to new members.")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(administrator=True)
+async def set_autorole(interaction: discord.Interaction, role: discord.Role):
+    if role.is_default() or role.managed or role >= interaction.guild.me.top_role:
+        return await interaction.response.send_message("Choose a normal role below the bot's highest role.", ephemeral=True)
+    set_setting(interaction.guild_id, "autorole_id", role.id)
+    await interaction.response.send_message(f"New members will receive {role.mention}.", ephemeral=True)
+
+
+@bot.tree.command(name="automod", description="Enable or disable AutoMod.")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(administrator=True)
+async def automod(interaction: discord.Interaction, enabled: bool):
+    set_setting(interaction.guild_id, "automod_enabled", int(enabled))
+    await interaction.response.send_message(f"AutoMod {'enabled' if enabled else 'disabled'}.", ephemeral=True)
+
+
+@bot.tree.command(name="leveling", description="Enable or disable XP leveling.")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(administrator=True)
+async def leveling(interaction: discord.Interaction, enabled: bool):
+    set_setting(interaction.guild_id, "leveling_enabled", int(enabled))
+    await interaction.response.send_message(f"Leveling {'enabled' if enabled else 'disabled'}.", ephemeral=True)
+
+
+@bot.tree.command(name="lock", description="Lock the current text channel.")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_channels=True)
+async def lock_channel(interaction: discord.Interaction):
+    if not isinstance(interaction.channel, discord.TextChannel):
+        return await interaction.response.send_message("Text channels only.", ephemeral=True)
+    await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=False,
+                                               reason=f"Locked by {interaction.user}")
+    await interaction.response.send_message("🔒 Channel locked. | کەناڵ داخرا.")
+
+
+@bot.tree.command(name="unlock", description="Unlock the current text channel.")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_channels=True)
+async def unlock_channel(interaction: discord.Interaction):
+    if not isinstance(interaction.channel, discord.TextChannel):
+        return await interaction.response.send_message("Text channels only.", ephemeral=True)
+    await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=None,
+                                               reason=f"Unlocked by {interaction.user}")
+    await interaction.response.send_message("🔓 Channel unlocked. | کەناڵ ڤەبوو.")
+
+
+@bot.event
+async def on_member_join(member: discord.Member):
+    config = settings_for(member.guild.id)
+    role = member.guild.get_role(config.get("autorole_id") or 0)
+    if role and member.guild.me and role < member.guild.me.top_role:
+        try:
+            await member.add_roles(role, reason="Friends Village auto-role")
+        except discord.HTTPException:
+            log.exception("Auto-role assignment failed")
+    channel_id = get_welcome_channel(member.guild.id)
+    channel = member.guild.get_channel(channel_id) if channel_id else None
+    if isinstance(channel, discord.TextChannel):
+        embed = discord.Embed(
+            title="✦ Welcome to Friends Village | بەخێربێیت ✦",
+            description=(f"Welcome {member.mention}! Make yourself at home.\\n"
+                         f"بەخێربێیت {member.mention}! هیڤیدارین کاتەکە تە خۆش بیت."),
+            color=GOLD
+        )
+        embed.set_thumbnail(url=member.display_avatar.url)
+        embed.set_footer(text=f"Member #{member.guild.member_count or '?'} • Friends Village")
+        try:
+            await channel.send(embed=embed)
+        except discord.Forbidden:
+            log.warning("Cannot send welcome message in channel %s", channel_id)
+
+
+@bot.event
+async def on_member_remove(member: discord.Member):
+    await audit(member.guild, "Member left", f"{member} (`{member.id}`) left the server.")
+
+
+@bot.event
+async def on_message_delete(message: discord.Message):
+    if message.guild and not message.author.bot:
+        content = (message.content or "[No text content / attachment]")[:800]
+        await audit(message.guild, "Message deleted",
+                    f"Author: {message.author.mention}\\nChannel: {message.channel.mention}\\nContent: {content}")
+
+
+@bot.event
+async def on_message_edit(before: discord.Message, after: discord.Message):
+    if before.guild and not before.author.bot and before.content != after.content:
+        await audit(before.guild, "Message edited",
+                    f"Author: {before.author.mention}\\nChannel: {before.channel.mention}\\nBefore: {before.content[:350]}\\nAfter: {after.content[:350]}")
+
+
+@bot.tree.error
+async def luxury_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.MissingPermissions):
+        msg = "You do not have permission. | مۆڵەتا تە نینە."
+    elif isinstance(error, app_commands.BotMissingPermissions):
+        msg = "The bot is missing a required permission. | مۆڵەتێن بۆت نەینە."
+    else:
+        log.error("Slash command error: %s", error, exc_info=error)
+        msg = "Something went wrong. Check bot permissions and hosting logs."
+    try:
+        if interaction.response.is_done():
+            await interaction.followup.send(msg, ephemeral=True)
+        else:
+            await interaction.response.send_message(msg, ephemeral=True)
     except discord.HTTPException:
         pass
 
