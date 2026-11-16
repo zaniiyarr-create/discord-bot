@@ -497,6 +497,7 @@ async def setup(interaction: discord.Interaction):
     # Create dedicated access roles. Assign members to these roles manually.
     vip_role = await ensure_role(guild, "Village VIP", discord.Color.gold())
     staff_role = await ensure_role(guild, "Village Staff", GOLD)
+    friends_role = await ensure_role(guild, "Village Friends", discord.Color.from_rgb(90, 160, 220))
 
     everyone = guild.default_role
 
@@ -599,6 +600,50 @@ async def setup(interaction: discord.Interaction):
     await ensure_text_channel(guild, private_cat, "📸・vip-media", "A private space for VIP media.")
     await ensure_voice_channel(guild, private_cat, "🔐・VIP Voice")
 
+    # 08 — Private area for the owner and invited friends.
+    # Assign the Village Friends role only to people who should see this category.
+    friends_overwrites = {
+        everyone: discord.PermissionOverwrite(view_channel=False),
+        friends_role: discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            send_messages_in_threads=True,
+            read_message_history=True,
+            attach_files=True,
+            embed_links=True,
+            connect=True,
+            speak=True,
+        ),
+        staff_role: discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            read_message_history=True,
+            manage_messages=True,
+            connect=True,
+            speak=True,
+        ),
+    }
+    if bot_member:
+        friends_overwrites[bot_member] = discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            read_message_history=True,
+            manage_channels=True,
+            connect=True,
+            speak=True,
+        )
+
+    friends_cat = await ensure_category(
+        guild, "🫂・PRIVATE FRIENDS CLUB", friends_overwrites
+    )
+    await ensure_text_channel(guild, friends_cat, "💬・friends-chat", "Private chat for invited friends.")
+    await ensure_text_channel(guild, friends_cat, "😂・friends-memes", "Memes and jokes for the friends group.")
+    await ensure_text_channel(guild, friends_cat, "📸・friends-media", "Private photos, clips and media.")
+    await ensure_text_channel(guild, friends_cat, "🎮・gaming-plans", "Plan games and play sessions together.")
+    await ensure_voice_channel(guild, friends_cat, "🔊・friends-lounge")
+    await ensure_voice_channel(guild, friends_cat, "🎮・private-gaming")
+    await ensure_voice_channel(guild, friends_cat, "🌙・late-night-talks")
+
     # 08 — Staff area
     staff_overwrites = {
         everyone: discord.PermissionOverwrite(view_channel=False),
@@ -633,7 +678,8 @@ async def setup(interaction: discord.Interaction):
         description=(
             "The server layout is ready. Existing channels and messages were not deleted.\n\n"
             "**Public areas:** Welcome, Community, Gaming, Creative World, Events, Voice Lounge and Forums.\n"
-            "**Private areas:** VIP Private Lounge and Staff Control.\n"
+            "**Private areas:** VIP Private Lounge, Private Friends Club and Staff Control.\n"
+            "**Friends access:** Assign trusted people the `Village Friends` role.\n"
             "**Support:** Ticket panel is ready.\n\n"
             f"Welcome channel: {welcome.mention}\n"
             f"Ticket panel: {support.mention}\n"

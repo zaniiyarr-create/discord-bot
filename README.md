@@ -41,3 +41,9 @@ Start command: `python bot.py`. Set `DISCORD_TOKEN`, `DATABASE_PATH=/data/friend
 - Role assignment requires the bot's highest role to be above the target role.
 - SQLite persists only when the configured database path is on persistent storage.
 - Never share the bot token. Regenerate it immediately if exposed.
+
+
+## Private Friends Club (v3)
+The `/setup` command creates a separate `🫂・PRIVATE FRIENDS CLUB` category with private text and voice channels. It is hidden from `@everyone` and visible to members with the `Village Friends` role, plus `Village Staff` and the bot. The server owner and administrators retain their normal Discord administrator access.
+
+After `/setup`, assign `Village Friends` only to trusted friends in **Server Settings → Members** or **Server Settings → Roles**. Do not give this role to everyone. The bot needs **Manage Roles**; keep its highest role above `Village Friends` if you later want automatic role assignment.
