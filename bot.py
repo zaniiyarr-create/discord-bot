@@ -1,10 +1,12 @@
 import os
 import logging
 import re
+import shutil
 import sqlite3
 from datetime import timedelta
 from pathlib import Path
 from typing import Optional
+from pathlib import Path as _Path
 
 import discord
 from discord import app_commands
@@ -14,6 +16,10 @@ from discord.ext import commands
 TOKEN = os.getenv("DISCORD_TOKEN")
 DATABASE_PATH = Path(os.getenv("DATABASE_PATH", "data/friends_village.db"))
 DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
+AUDIO_ROOT = Path(os.getenv("AUDIO_ROOT", "data/audio"))
+AUDIO_ROOT.mkdir(parents=True, exist_ok=True)
+MAX_AUDIO_BYTES = 20 * 1024 * 1024  # 20 MB per uploaded track/clip
+ALLOWED_AUDIO_EXTENSIONS = {".mp3", ".wav", ".ogg", ".m4a", ".flac"}
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -385,6 +391,115 @@ class CloseTicketView(discord.ui.View):
         await channel.delete(reason=f"Ticket closed by {interaction.user}")
 
 
+# -------------------- Community audio: music, Quran and soundpad --------------------
+AUDIO_KINDS = {"music": "🎵 Music", "quran": "📖 Quran", "soundpad": "🔊 Soundpad"}
+
+def audio_folder(guild_id: int, kind: str) -> Path:
+    folder = AUDIO_ROOT / str(guild_id) / kind
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+
+def clean_audio_name(value: str) -> str:
+    value = Path(value).name
+    value = re.sub(r"[^a-zA-Z0-9 _.-]", "", value).strip(" .")
+    return value[:80] or "audio"
+
+
+@bot.tree.command(name="audio-upload", description="Upload a music track, Quran recitation or Soundpad clip.")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_guild=True)
+@app_commands.describe(kind="Choose the audio library", attachment="MP3, WAV, OGG, M4A or FLAC file")
+@app_commands.choices(kind=[
+    app_commands.Choice(name="Music", value="music"),
+    app_commands.Choice(name="Quran", value="quran"),
+    app_commands.Choice(name="Soundpad", value="soundpad"),
+])
+async def audio_upload(interaction: discord.Interaction, kind: app_commands.Choice[str], attachment: discord.Attachment):
+    ext = Path(attachment.filename).suffix.lower()
+    if ext not in ALLOWED_AUDIO_EXTENSIONS:
+        return await interaction.response.send_message("Unsupported audio format. Use MP3, WAV, OGG, M4A or FLAC.", ephemeral=True)
+    if attachment.size > MAX_AUDIO_BYTES:
+        return await interaction.response.send_message("File is larger than 20 MB. Please upload a smaller audio file.", ephemeral=True)
+    folder = audio_folder(interaction.guild_id, kind.value)
+    base = clean_audio_name(Path(attachment.filename).stem)
+    destination = folder / f"{base}{ext}"
+    counter = 2
+    while destination.exists():
+        destination = folder / f"{base}-{counter}{ext}"
+        counter += 1
+    try:
+        await attachment.save(destination)
+    except (discord.HTTPException, OSError):
+        log.exception("Audio upload failed")
+        return await interaction.response.send_message("Could not save that audio file. Check the bot's storage and try again.", ephemeral=True)
+    await interaction.response.send_message(f"Uploaded **{destination.name}** to **{AUDIO_KINDS[kind.value]}**. Use `/audio-list` to see files and `/audio-play` to play one in your current voice channel.", ephemeral=True)
+
+
+@bot.tree.command(name="audio-list", description="List available music, Quran and Soundpad audio files.")
+@app_commands.guild_only()
+@app_commands.choices(kind=[
+    app_commands.Choice(name="Music", value="music"),
+    app_commands.Choice(name="Quran", value="quran"),
+    app_commands.Choice(name="Soundpad", value="soundpad"),
+])
+async def audio_list(interaction: discord.Interaction, kind: app_commands.Choice[str]):
+    files = sorted(f.name for f in audio_folder(interaction.guild_id, kind.value).iterdir() if f.is_file())
+    description = "\n".join(f"• `{name}`" for name in files[:30]) or "No audio files uploaded yet. Ask a server manager to use `/audio-upload`."
+    embed = discord.Embed(title=f"{AUDIO_KINDS[kind.value]} Library", description=description, color=GOLD)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@bot.tree.command(name="audio-play", description="Play an uploaded track or sound in your current voice channel.")
+@app_commands.guild_only()
+@app_commands.choices(kind=[
+    app_commands.Choice(name="Music", value="music"),
+    app_commands.Choice(name="Quran", value="quran"),
+    app_commands.Choice(name="Soundpad", value="soundpad"),
+])
+@app_commands.describe(kind="Audio library", filename="Exact filename shown by /audio-list")
+async def audio_play(interaction: discord.Interaction, kind: app_commands.Choice[str], filename: str):
+    member = interaction.user
+    voice_state = getattr(member, "voice", None)
+    if not voice_state or not voice_state.channel:
+        return await interaction.response.send_message("Join a voice channel first.", ephemeral=True)
+    folder = audio_folder(interaction.guild_id, kind.value)
+    safe_name = Path(filename).name
+    source = folder / safe_name
+    if not source.is_file() or source.suffix.lower() not in ALLOWED_AUDIO_EXTENSIONS:
+        return await interaction.response.send_message("Audio file not found. Check `/audio-list` for the exact filename.", ephemeral=True)
+    if shutil.which("ffmpeg") is None:
+        return await interaction.response.send_message("The audio player is not ready: FFmpeg is missing from the host.", ephemeral=True)
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    voice = interaction.guild.voice_client
+    try:
+        if voice and voice.is_connected():
+            if voice.channel != voice_state.channel:
+                await voice.move_to(voice_state.channel)
+        else:
+            voice = await voice_state.channel.connect()
+        if voice.is_playing() or voice.is_paused():
+            voice.stop()
+        audio_source = discord.FFmpegPCMAudio(str(source))
+        voice.play(audio_source, after=lambda error: log.error("Audio playback error: %s", error) if error else None)
+    except (discord.ClientException, discord.Forbidden, discord.HTTPException, OSError):
+        log.exception("Could not start voice playback")
+        return await interaction.followup.send("Could not join or play audio. Check Connect/Speak permissions and FFmpeg.", ephemeral=True)
+    await interaction.followup.send(f"▶️ Playing **{safe_name}** in {voice_state.channel.mention}.", ephemeral=True)
+
+
+@bot.tree.command(name="audio-stop", description="Stop the current audio playback and leave the voice channel.")
+@app_commands.guild_only()
+async def audio_stop(interaction: discord.Interaction):
+    voice = interaction.guild.voice_client
+    if not voice or not voice.is_connected():
+        return await interaction.response.send_message("The bot is not in a voice channel.", ephemeral=True)
+    if voice.is_playing() or voice.is_paused():
+        voice.stop()
+    await voice.disconnect()
+    await interaction.response.send_message("⏹️ Audio stopped; the bot left the voice channel.", ephemeral=True)
+
+
 # -------------------- Events --------------------
 @bot.event
 async def on_ready():
@@ -430,6 +545,7 @@ async def help_command(interaction: discord.Interaction):
         color=GOLD,
     )
     embed.add_field(name="Everyone", value="`/ping` · `/serverinfo` · `/userinfo`", inline=False)
+    embed.add_field(name="Audio", value="`/audio-list` · `/audio-play` · `/audio-stop` · `/audio-upload` (manager)", inline=False)
     embed.add_field(name="Support", value="Use the **Create a ticket** button in #support-tickets.", inline=False)
     embed.add_field(
         name="Administrators",
@@ -558,7 +674,23 @@ async def setup(interaction: discord.Interaction):
     await ensure_voice_channel(guild, voice_cat, "🎮・Gaming Room")
     await ensure_voice_channel(guild, voice_cat, "🌙・Late Night Talks")
 
-    # 05 — Forums
+    # 07 — Dedicated audio spaces. Audio is played from files uploaded by managers.
+    music_cat = await ensure_category(guild, "🎵・MUSIC STUDIO", public_overwrites)
+    await ensure_text_channel(guild, music_cat, "🎶・music-requests", "Request tracks and share music. Managers can upload tracks with /audio-upload.")
+    await ensure_text_channel(guild, music_cat, "📚・music-library", "Use /audio-list and /audio-play to browse and play uploaded music.")
+    await ensure_voice_channel(guild, music_cat, "🎧・Music Listening Room")
+
+    quran_cat = await ensure_category(guild, "📖・QURAN & RECITATION", public_overwrites)
+    await ensure_text_channel(guild, quran_cat, "🕌・quran-library", "Quran recitations uploaded by server managers. Use /audio-list kind:Quran.")
+    await ensure_text_channel(guild, quran_cat, "🌙・quran-reflections", "A respectful space for Quran reflections and reminders.")
+    await ensure_voice_channel(guild, quran_cat, "🤍・Quran Listening Room")
+
+    soundpad_cat = await ensure_category(guild, "🔊・SOUNDPAD & EFFECTS", public_overwrites)
+    await ensure_text_channel(guild, soundpad_cat, "🎛️・soundpad-library", "Browse uploaded sound effects with /audio-list kind:Soundpad.")
+    await ensure_text_channel(guild, soundpad_cat, "📤・soundpad-uploads", "Managers can add custom sound clips with /audio-upload kind:Soundpad.")
+    await ensure_voice_channel(guild, soundpad_cat, "🎙️・Soundpad Voice Room")
+
+    # 08 — Forums
     forum_cat = await ensure_category(guild, "🧵・COMMUNITY FORUMS", public_overwrites)
     await ensure_forum_channel(guild, forum_cat, "💬・community-discussions", "Start a topic and discuss it with the community.", ["Discussion", "Question", "Poll", "Important"])
     await ensure_forum_channel(guild, forum_cat, "❓・questions-and-help", "Ask questions and help other members.", ["Unanswered", "Answered", "Technical", "Guidance"])
@@ -680,6 +812,7 @@ async def setup(interaction: discord.Interaction):
             "**Public areas:** Welcome, Community, Gaming, Creative World, Events, Voice Lounge and Forums.\n"
             "**Private areas:** VIP Private Lounge, Private Friends Club and Staff Control.\n"
             "**Friends access:** Assign trusted people the `Village Friends` role.\n"
+            "**Audio:** Music, Quran and Soundpad libraries and voice rooms are ready. Managers upload files with `/audio-upload`; members play them with `/audio-play`.\n"
             "**Support:** Ticket panel is ready.\n\n"
             f"Welcome channel: {welcome.mention}\n"
             f"Ticket panel: {support.mention}\n"
