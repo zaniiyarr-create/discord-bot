@@ -348,46 +348,6 @@ async def on_member_join(member: discord.Member):
 
 
 # -------------------- Slash commands --------------------
-@bot.tree.command(name="delete-categories", description="Delete ALL server channels and categories (irreversible).")
-@app_commands.checks.has_permissions(administrator=True)
-@app_commands.guild_only()
-async def delete_categories(interaction: discord.Interaction):
-    guild = interaction.guild
-    if guild is None:
-        return await interaction.response.send_message("This command only works in a server.", ephemeral=True)
-
-    bot_member = guild.me or (guild.get_member(bot.user.id) if bot.user else None)
-    if bot_member is None or not bot_member.guild_permissions.manage_channels:
-        return await interaction.response.send_message(
-            "I need the **Manage Channels** permission before I can delete categories and channels.",
-            ephemeral=True,
-        )
-
-    channel_count = sum(1 for channel in guild.channels if not isinstance(channel, discord.CategoryChannel))
-    category_count = len(guild.categories)
-    embed = discord.Embed(
-        title="⚠️ Confirm COMPLETE server channel reset",
-        description=(
-            f"This will permanently delete **ALL {channel_count} channels** and "
-            f"**ALL {category_count} categories**.\n\n"
-            "This includes channels inside categories AND channels outside categories. "
-            "All messages in deleted channels will be lost. This cannot be undone.\n\n"
-            "After it finishes, run `/setup` to create the new Friends Village layout."
-        ),
-        color=discord.Color.red(),
-    )
-    log.info(
-        "Full channel reset requested by %s (%s) in guild %s (%s): %s categories, %s total channels",
-        interaction.user, interaction.user.id, guild.name, guild.id,
-        category_count, channel_count,
-    )
-    await interaction.response.send_message(
-        embed=embed,
-        view=DeleteCategoriesConfirmView(interaction.user.id),
-        ephemeral=True,
-    )
-
-
 @bot.tree.command(name="ping", description="Check the bot response time.")
 async def ping(interaction: discord.Interaction):
     await interaction.response.send_message(
