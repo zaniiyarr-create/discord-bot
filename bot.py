@@ -1,7 +1,9 @@
 import os
 import logging
+import io
 import re
 import shutil
+import tempfile
 import sqlite3
 from datetime import timedelta
 from pathlib import Path
@@ -14,18 +16,21 @@ from discord.ext import commands
 
 # -------------------- Configuration --------------------
 TOKEN = os.getenv("DISCORD_TOKEN")
-DATABASE_PATH = Path(os.getenv("DATABASE_PATH", "data/friends_village.db"))
-DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
-AUDIO_ROOT = Path(os.getenv("AUDIO_ROOT", "data/audio"))
-AUDIO_ROOT.mkdir(parents=True, exist_ok=True)
-MAX_AUDIO_BYTES = 20 * 1024 * 1024  # 20 MB per uploaded track/clip
-ALLOWED_AUDIO_EXTENSIONS = {".mp3", ".wav", ".ogg", ".m4a", ".flac"}
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
 )
 log = logging.getLogger("friends-village")
+
+DATABASE_PATH = Path(os.getenv("DATABASE_PATH", "/data/friends_village.db"))
+DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
+if DATABASE_PATH.parent == Path("/data") and not os.path.ismount("/data"):
+    log.warning("The /data path is not detected as a mounted volume. Configure a Railway Volume at /data for persistent storage.")
+AUDIO_ROOT = Path(os.getenv("AUDIO_ROOT", "/data/audio"))
+AUDIO_ROOT.mkdir(parents=True, exist_ok=True)
+MAX_AUDIO_BYTES = 20 * 1024 * 1024  # 20 MB per uploaded track/clip
+ALLOWED_AUDIO_EXTENSIONS = {".mp3", ".wav", ".ogg", ".m4a", ".flac"}
 
 intents = discord.Intents.default()
 intents.guilds = True
@@ -106,6 +111,17 @@ def init_db():
             moderator_id INTEGER NOT NULL, action TEXT NOT NULL, reason TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )""")
+        # V5.1 community profile and safe self-assignable role configuration.
+        conn.execute("""CREATE TABLE IF NOT EXISTS member_profiles (
+            guild_id INTEGER NOT NULL, user_id INTEGER NOT NULL,
+            bio TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (guild_id, user_id)
+        )""")
+        conn.execute("""CREATE TABLE IF NOT EXISTS self_assignable_roles (
+            guild_id INTEGER NOT NULL, role_id INTEGER NOT NULL,
+            added_by INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (guild_id, role_id)
+        )""")
         conn.commit()
 
 
@@ -185,10 +201,11 @@ async def ensure_text_channel_in_category(
     name: str,
     topic: Optional[str] = None,
 ) -> discord.TextChannel:
-    # Only inspect the target category. Never move, rename, or edit an existing channel.
+    # Search the whole guild to avoid duplicates. Existing channels are never moved,
+    # renamed, or edited, even when they currently live in another category.
     existing = discord.utils.find(
         lambda ch: isinstance(ch, discord.TextChannel) and ch.name == name,
-        category.channels,
+        guild.channels,
     )
     if existing:
         return existing
@@ -600,26 +617,6 @@ async def on_ready():
     await bot.sync_guild_commands()
 
 
-@bot.event
-async def on_member_join(member: discord.Member):
-    channel_id = get_welcome_channel(member.guild.id)
-    if not channel_id:
-        return
-    channel = member.guild.get_channel(channel_id)
-    if isinstance(channel, discord.TextChannel):
-        embed = discord.Embed(
-            title="✦ ب خێر هاتی بۆ Friends Village ✦",
-            description=(f"ب خێر هاتی {member.mention}! ئەڤ شووە یا تەیە؛ هیڤیدارین کاتەکە تە خۆش بیت.\n"
-                         "یاسایێن سێرڤەری بخوینە و ل گەل هەمی ئەندامان ب ڕێز ڕەفتار بکە."),
-            color=GOLD,
-        )
-        embed.set_thumbnail(url=member.display_avatar.url)
-        try:
-            await channel.send(embed=embed)
-        except discord.Forbidden:
-            log.warning("Cannot send welcome message in channel %s", channel_id)
-
-
 # -------------------- Slash commands --------------------
 @bot.tree.command(name="ping", description="Check the bot response time.")
 async def ping(interaction: discord.Interaction):
@@ -636,15 +633,158 @@ async def help_command(interaction: discord.Interaction):
         description="Community tools and server management.",
         color=GOLD,
     )
-    embed.add_field(name="Everyone", value="`/ping` · `/serverinfo` · `/userinfo`", inline=False)
+    embed.add_field(name="ئەندام", value="`/ping` · `/serverinfo` · `/userinfo` · `/profile` · `/profile-bio` · `/rank` · `/leaderboard`", inline=False)
+    embed.add_field(name="رولێن خۆ هەلبژێرە", value="`/self-role-list` · `/self-role`", inline=False)
     embed.add_field(name="Audio", value="`/audio-list` · `/audio-play` · `/audio-stop` · `/audio-upload` (manager)", inline=False)
     embed.add_field(name="Support", value="Use the **Create a ticket** button in #support-tickets.", inline=False)
     embed.add_field(
         name="Administrators",
-        value="`/setup` · `/set-welcome` · `/purge` · `/timeout` · `/kick` · `/ban`",
+        value="`/setup` · `/set-welcome` · `/set-log` · `/set-autorole` · `/automod` · `/leveling` · `/village-status` · `/backup-database` · `/purge` · `/timeout` · `/kick` · `/ban`",
         inline=False,
     )
     await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@bot.tree.command(name="profile-bio", description="بایۆی پرۆفایلا خۆ بنڤیسە و نوو بکە.")
+@app_commands.guild_only()
+@app_commands.describe(bio="بایۆیەکا کورت، تا ١٥٠ پیت")
+async def profile_bio(interaction: discord.Interaction, bio: app_commands.Range[str, 1, 150]):
+    clean_bio = re.sub(r"[\x00-\x1f\x7f]", " ", bio).strip()
+    if not clean_bio:
+        return await interaction.response.send_message("بایۆیا تە نابیت بەتاڵ بیت.", ephemeral=True)
+    with db_connect() as conn:
+        conn.execute(
+            """INSERT INTO member_profiles (guild_id, user_id, bio) VALUES (?, ?, ?)
+               ON CONFLICT(guild_id, user_id) DO UPDATE SET bio=excluded.bio,
+               updated_at=CURRENT_TIMESTAMP""",
+            (interaction.guild_id, interaction.user.id, clean_bio),
+        )
+        conn.commit()
+    await interaction.response.send_message("✅ بایۆیا تە ب سەرکەفتی هاتە نووکرن.", ephemeral=True)
+
+
+@bot.tree.command(name="profile", description="پرۆفایلا خۆ یان ئەندامەکێ دی ببینە.")
+@app_commands.guild_only()
+@app_commands.describe(member="ئەو ئەندامە یێ دڤێت پرۆفایلا وی ببینی")
+async def profile(interaction: discord.Interaction, member: Optional[discord.Member] = None):
+    member = member or interaction.user
+    with db_connect() as conn:
+        bio_row = conn.execute(
+            "SELECT bio FROM member_profiles WHERE guild_id=? AND user_id=?",
+            (interaction.guild_id, member.id),
+        ).fetchone()
+        xp_row = conn.execute(
+            "SELECT xp, level FROM member_xp WHERE guild_id=? AND user_id=?",
+            (interaction.guild_id, member.id),
+        ).fetchone()
+    xp = int(xp_row["xp"]) if xp_row else 0
+    level = int(xp_row["level"]) if xp_row else 0
+    bio_text = bio_row["bio"] if bio_row and bio_row["bio"] else "ئەڤ ئەندامە هێشتا بایۆیەک نەنووسییە."
+    embed = discord.Embed(title=f"👤 پرۆفایلا {member.display_name}", color=GOLD)
+    embed.set_thumbnail(url=member.display_avatar.url)
+    embed.add_field(name="ئاست", value=str(level), inline=True)
+    embed.add_field(name="کۆی XP", value=f"{xp:,}", inline=True)
+    embed.add_field(name="دەربارەی", value=bio_text[:1000], inline=False)
+    embed.set_footer(text="Friends Village • پرۆفایلا ئەندامان")
+    await interaction.response.send_message(embed=embed)
+
+
+def role_has_sensitive_permissions(role: discord.Role) -> bool:
+    perms = role.permissions
+    return any((
+        perms.administrator, perms.manage_guild, perms.manage_roles,
+        perms.manage_channels, perms.ban_members, perms.kick_members,
+        perms.moderate_members, perms.manage_webhooks, perms.manage_messages,
+        perms.manage_threads, perms.view_audit_log, perms.manage_nicknames,
+        perms.manage_events, perms.manage_expressions, perms.mention_everyone,
+    ))
+
+
+@bot.tree.command(name="self-role-allow", description="ڕۆلەکێ بۆ هەلبژارتنا ئەندامان ڕێپێ بدە.")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(administrator=True)
+@app_commands.describe(role="ئەو رولە یێ ئەندام دکارن خۆ هەلبژێرن")
+async def self_role_allow(interaction: discord.Interaction, role: discord.Role):
+    me = interaction.guild.me
+    if role.is_default() or role.managed or me is None or role >= me.top_role:
+        return await interaction.response.send_message("ئەڤ رولە ناهێتە بەکارئینان؛ رولەکا ئاسایی و ژ رولێ بۆتێ نزمتر هەلبژێرە.", ephemeral=True)
+    if not me.guild_permissions.manage_roles:
+        return await interaction.response.send_message("بۆت پێویستی ب مۆڵەتا Manage Roles هەیە.", ephemeral=True)
+    if role_has_sensitive_permissions(role):
+        return await interaction.response.send_message("ئەڤ رولە دەسەڵاتێن هەستیار هەنە و نابیت ئەندام خۆ هەلبژێرن.", ephemeral=True)
+    with db_connect() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO self_assignable_roles (guild_id, role_id, added_by) VALUES (?, ?, ?)",
+            (interaction.guild_id, role.id, interaction.user.id),
+        )
+        conn.commit()
+    await interaction.response.send_message(f"✅ رولێ {role.mention} بۆ هەلبژارتنا ئەندامان هاتە ڕێپێدان.", ephemeral=True)
+
+
+@bot.tree.command(name="self-role-remove", description="ڕۆلەکێ ژ لیستا هەلبژارتنا ئەندامان لاببە.")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(administrator=True)
+@app_commands.describe(role="ئەو رولە یێ دڤێت ژ لیستێ لاببەی")
+async def self_role_remove(interaction: discord.Interaction, role: discord.Role):
+    with db_connect() as conn:
+        cur = conn.execute(
+            "DELETE FROM self_assignable_roles WHERE guild_id=? AND role_id=?",
+            (interaction.guild_id, role.id),
+        )
+        conn.commit()
+    if cur.rowcount:
+        await interaction.response.send_message(f"✅ رولێ {role.mention} ژ لیستێ هاتە لابردن. ئەو رول ل ئەندامان ناهێتە ژێبرن.", ephemeral=True)
+    else:
+        await interaction.response.send_message("ئەڤ رولە ل لیستا هەلبژارتنێدا نەبوو.", ephemeral=True)
+
+
+@bot.tree.command(name="self-role-list", description="لیستا رولێن بەردەست بۆ هەلبژارتنێ ببینە.")
+@app_commands.guild_only()
+async def self_role_list(interaction: discord.Interaction):
+    with db_connect() as conn:
+        rows = conn.execute(
+            "SELECT role_id FROM self_assignable_roles WHERE guild_id=? ORDER BY role_id",
+            (interaction.guild_id,),
+        ).fetchall()
+    lines = []
+    for row in rows:
+        role = interaction.guild.get_role(int(row["role_id"]))
+        if role is not None:
+            lines.append(f"• {role.mention} — بۆ وەرگرتن `/self-role` بەکار بینە.")
+    embed = discord.Embed(
+        title="🎭 رولێن خۆ هەلبژێرە",
+        description="\n".join(lines) if lines else "هێشتا رولەک بۆ هەلبژارتنێ نەهاتییە ڕێپێدان.",
+        color=GOLD,
+    )
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@bot.tree.command(name="self-role", description="رۆلەکا ڕێپێدراو وەرگرە یان ژ خۆ لاببە.")
+@app_commands.guild_only()
+@app_commands.describe(role="رولێ دڤێت وەرگری یان لاببەی")
+async def self_role(interaction: discord.Interaction, role: discord.Role):
+    guild = interaction.guild
+    member = interaction.user
+    me = guild.me
+    if not isinstance(member, discord.Member) or me is None:
+        return await interaction.response.send_message("نەشیا ئەندام و بۆت بناسین.", ephemeral=True)
+    with db_connect() as conn:
+        allowed = conn.execute(
+            "SELECT 1 FROM self_assignable_roles WHERE guild_id=? AND role_id=?",
+            (guild.id, role.id),
+        ).fetchone()
+    if not allowed:
+        return await interaction.response.send_message("ئەڤ رولە بۆ هەلبژارتنا ئەندامان ڕێپێنەدراوە.", ephemeral=True)
+    if role.is_default() or role.managed or role >= me.top_role or role_has_sensitive_permissions(role):
+        return await interaction.response.send_message("ئەڤ رولە ناتوانرێت ب شێوەیێ خۆکار بهێتە گۆڕین.", ephemeral=True)
+    if not me.guild_permissions.manage_roles:
+        return await interaction.response.send_message("بۆت پێویستی ب مۆڵەتا Manage Roles هەیە.", ephemeral=True)
+    if role in member.roles:
+        await member.remove_roles(role, reason=f"Self-service role removed by {member}")
+        await interaction.response.send_message(f"✅ رولێ {role.name} ژ تە هاتە لابردن.", ephemeral=True)
+    else:
+        await member.add_roles(role, reason=f"Self-service role added by {member}")
+        await interaction.response.send_message(f"✅ رولێ {role.name} ب سەرکەفتی هاتە دانان.", ephemeral=True)
 
 
 @bot.tree.command(name="serverinfo", description="Show information about this server.")
@@ -1002,24 +1142,68 @@ async def ban_member(interaction: discord.Interaction, member: discord.Member, r
     await interaction.response.send_message(f"Banned {member.mention}.", ephemeral=True)
 
 
-# -------------------- Error handling --------------------
-@bot.tree.error
-async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    if isinstance(error, app_commands.MissingPermissions):
-        message = "You do not have permission to use this command."
-    elif isinstance(error, app_commands.CommandOnCooldown):
-        message = "Please wait before using this command again."
-    else:
-        log.exception("Application command error", exc_info=error)
-        message = "Something went wrong. Check the bot logs or contact an administrator."
 
+# -------------------- V5 Royal Elite operations --------------------
+@bot.tree.command(name="village-status", description="دۆخێ بۆت و بنکەیا داتایێ ببینە.")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(manage_guild=True)
+async def village_status(interaction: discord.Interaction):
+    db_ok = False
+    db_size = 0
     try:
-        if interaction.response.is_done():
-            await interaction.followup.send(message, ephemeral=True)
-        else:
-            await interaction.response.send_message(message, ephemeral=True)
-    except discord.HTTPException:
-        pass
+        with db_connect() as conn:
+            conn.execute("SELECT 1").fetchone()
+        db_ok = DATABASE_PATH.exists()
+        db_size = DATABASE_PATH.stat().st_size if db_ok else 0
+    except (sqlite3.Error, OSError):
+        log.exception("Database health check failed")
+    volume_path = str(DATABASE_PATH.parent.resolve())
+    embed = discord.Embed(title="✦ دۆخێ Friends Village", color=GOLD)
+    embed.add_field(name="بۆت", value="چالاکە" if bot.is_ready() else "نەچالاکە", inline=True)
+    embed.add_field(name="پەیوەندی", value=f"{round(bot.latency * 1000)} ms" if bot.is_ready() else "نەزانراو", inline=True)
+    embed.add_field(name="بنکەیا داتایێ", value="باشە" if db_ok else "پشکنین پێویستە", inline=True)
+    embed.add_field(name="قەبارەیا DB", value=f"{db_size:,} bytes", inline=True)
+    embed.add_field(name="شوێنێ DB", value=f"`{volume_path}`", inline=False)
+    embed.add_field(name="ئاگەهداری", value="ئەڤ پشکنینە تەنێ خوێندنە؛ بوونی Volume ـا هەمیشەیی ل Railway ژ داشبۆردێ Railway پشتڕاست بکە.", inline=False)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@bot.tree.command(name="backup-database", description="وەرگرتنا کۆپییەکا پاراستنێ ژ بنکەیا داتایێ.")
+@app_commands.guild_only()
+@app_commands.checks.has_permissions(administrator=True)
+async def backup_database(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    temp_name = None
+    try:
+        # SQLite's backup API safely includes committed WAL data.
+        fd, temp_name = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        with db_connect() as current, sqlite3.connect(temp_name) as target:
+            current.backup(target)
+        with open(temp_name, "rb") as handle:
+            backup_buffer = io.BytesIO(handle.read())
+        backup_buffer.seek(0)
+        filename = f"friends-village-backup-{discord.utils.utcnow():%Y%m%d-%H%M%S}.db"
+        await interaction.followup.send(
+            content="کۆپییا پاراستنێ یا بنکەیا داتایێ ئامادەیە. ئەڤ فایلە ب پارێزە و ب کەسێ دی مەدە.",
+            file=discord.File(backup_buffer, filename=filename),
+            ephemeral=True,
+        )
+    except (sqlite3.Error, OSError, discord.HTTPException):
+        log.exception("Database backup failed")
+        await interaction.followup.send(
+            "نەشیا کۆپییا پاراستنێ ئامادە بکەت. لۆگێن Railway بپشکنە.",
+            ephemeral=True,
+        )
+    finally:
+        if temp_name:
+            try:
+                os.remove(temp_name)
+            except OSError:
+                log.warning("Could not remove temporary database backup file")
+
+
+# -------------------- Error handling --------------------
 
 
 

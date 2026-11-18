@@ -1,4 +1,4 @@
-# Friends Village v4.2 — Additive Layout / Royal Elite Paradise
+# Friends Village v5.1 — Community Profile / Self Roles / Royal Elite
 
 A bilingual English/Kurdish Discord community bot using discord.py 2.7.1, SQLite and gold-themed embeds.
 
@@ -85,3 +85,42 @@ Attach a persistent Volume mounted at `/data`. Start command: `python bot.py`.
 ## V4.2.1 — Rêberên kanalan bi kurdîya Badînî
 
 Di vê guhertinê de `/setup` ji bo her kanala nivîsarî ya ku bot rêve dike rêbernameyeke taybet bi zaravaya kurdîya Badînî dişîne û pin dike. Rêbername tenê carekê tê şandin. Peyamên berê nayên jêbirin; nav, cih, topic û destûrên kanalên heyî nayên guhertin. Bot divê destûra `Send Messages`, `Read Message History` û `Manage Messages` hebe da ku rêbernameyan pin bike.
+
+
+## V5.0 — Royal Elite Foundation (first implementation phase)
+
+Di vê qonaxê de:
+- Komanda `/village-status` rewşa bot, ping û SQLite nîşan dide. Ev komend tenê kontrola xwendinê ye; mount-a Railway divê ji dashboard-ê were piştrastkirin.
+- Komanda `/backup-database` ji bo adminan backup-a SQLite diafirîne û wek pelê taybet di Discord-ê de dişîne.
+- Dûbarebûna event-a `on_member_join` û error-handler-a slash command hatin yekxistin da ku autorole/welcome û rêkxistina xeletiyan bi awayekî yekgirtî bixebitin.
+- Lêgerîna kanalên nû li tevahiya serverê tê kirin da ku `/setup` kanalên heman navî li kategoriyeke din dubare çêneke.
+- Rêya xwerû ya SQLite û audio ji bo Railway `/data` ye. Volume li Railway bi mount path `/data` girêde û `DATABASE_PATH=/data/friends_village.db`, `AUDIO_ROOT=/data/audio` saz bike.
+
+### Qonaxên paşerojê yên Complete V5
+1. Community: role menus, welcome customization, member profile.
+2. Gaming: tournament registration, match reporting and leaderboard.
+3. Support: ticket transcript/export and staff workflow.
+4. Security: configurable AutoMod, audit coverage and scheduled backups.
+5. Voice: reliable playback queue, soundpad controls and reconnect handling.
+6. Badini localization: translate all user-facing command descriptions and bot responses, then test every command.
+
+**Test status:** Python syntax compilation succeeded for `bot.py`. No Discord login, Railway deployment, command sync, voice playback, or live server test has been performed.
+
+
+## V5.1 — Community Profile and Self Roles
+
+New Badini commands:
+- `/profile` — show a member's community profile, bio, XP and level.
+- `/profile-bio` — set or update your own short bio (up to 150 characters).
+- `/self-role-list` — show roles that administrators have approved for self-selection.
+- `/self-role` — add or remove one approved role from your own account.
+- `/self-role-allow` — administrator-only: approve a safe role for self-selection.
+- `/self-role-remove` — administrator-only: remove a role from the self-selection list. This does not remove it from members who already have it.
+
+Self-role safety: the bot refuses managed, @everyone, higher-than-bot, or privileged roles. Do not approve roles that grant moderation or server-management powers. The bot needs Manage Roles, and its highest role must be above every approved role.
+
+V5.1 database migration is additive: `member_profiles` and `self_assignable_roles` are created with `CREATE TABLE IF NOT EXISTS`. Existing tables and records are not deleted or rewritten. Existing V5.0 databases are retained when `DATABASE_PATH` points to the same persistent file.
+
+The V5.1 source also fixes a startup-order bug: the logger is initialized before the `/data` volume warning is written.
+
+**Validation:** Python syntax compilation and ZIP integrity checks were performed locally. Discord login, slash-command synchronization, Railway deployment, role assignment permissions, and live server behavior have not been tested.
