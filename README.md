@@ -1,14 +1,15 @@
-# Friends Village v4.0 — Royal Elite Paradise
+# Friends Village v4.2 — Additive Layout / Royal Elite Paradise
 
-A bilingual English/Kurdish Discord community bot using discord.py 2.6.4, SQLite and gold-themed embeds.
+A bilingual English/Kurdish Discord community bot using discord.py 2.7.1, SQLite and gold-themed embeds.
 
 ## Included server layout
 
-`/setup` safely creates missing categories/channels and moves matching channels into their intended categories. It does not delete existing channels or messages.
+`/setup` adds the requested missing categories/channels. Existing categories and channels are not deleted, moved, renamed, or edited. The one intentional exception is `📌・PRIVATE FRIENDS CLUB`: its private access permissions are enforced and the category is moved to the top, as requested.
 
 - Welcome & Information — public welcome, rules, announcements and roles.
-- Community — general chat, introductions, media, suggestions and bot commands.
-- Gaming — gaming chat, find-a-team, results and gaming news.
+- Community — general chat, introductions, media, suggestions, bot commands, boosts and social media.
+- Gaming — gaming chat, find-a-team, results, gaming news, PES/eFootball, PUBG, Among Us, Roblox and horror games.
+- Gallery — Family Village, photos, videos and Payv.
 - Creative World — art, photography, clips, music chat and memes.
 - Events & Activities — events, giveaways, competitions and polls.
 - Voice Lounge — general, chill, music, gaming and late-night voice rooms.
@@ -17,7 +18,7 @@ A bilingual English/Kurdish Discord community bot using discord.py 2.6.4, SQLite
 - Soundpad & Effects — soundpad library, uploads and voice room.
 - Community Forums — discussions, help, showcase, ideas and game discussions.
 - VIP Private Lounge — private to Village VIP, Village Staff and admins.
-- Private Friends Club — private to Village Friends, Village Staff and admins.
+- Private Friends Club — private to Village Friends, Village Staff and admins; pinned at the top of the category list.
 - Staff Control — private logs, staff chat and voice.
 - Support Tickets — public panel creating private ticket channels.
 
@@ -73,7 +74,7 @@ Attach a persistent Volume mounted at `/data`. Start command: `python bot.py`.
 
 ## Important notes
 
-- `/setup` is repeatable and does not delete existing channels/messages. Review permissions after setup; the server owner/admins retain administrative access.
+- `/setup` is repeatable and additive: it does not delete, move, rename, or edit existing channels/categories. It intentionally sets Private Friends Club to private and places it first. Review its role access after setup; the server owner/admins retain administrative access.
 - The welcome message is public in the configured welcome channel; it mentions the new member but does not @everyone-ping the whole server.
 - Audio playback is uploaded-file based. No internet music search, YouTube, Spotify, queue or autoplay is included.
 - Soundpad clips are played by command in the caller's current voice channel; it is not Discord's native Soundboard UI.

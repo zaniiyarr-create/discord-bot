@@ -172,12 +172,32 @@ async def ensure_category(
     name: str,
     overwrites: Optional[dict] = None,
 ) -> discord.CategoryChannel:
+    # Additive setup: never rewrite an existing category's permissions.
     existing = discord.utils.get(guild.categories, name=name)
     if existing:
-        if overwrites is not None:
-            await existing.edit(overwrites=overwrites, reason="Friends Village setup: enforce category permissions")
         return existing
     return await guild.create_category(name, overwrites=overwrites, reason="Friends Village setup")
+
+
+async def ensure_text_channel_in_category(
+    guild: discord.Guild,
+    category: discord.CategoryChannel,
+    name: str,
+    topic: Optional[str] = None,
+) -> discord.TextChannel:
+    # Only inspect the target category. Never move, rename, or edit an existing channel.
+    existing = discord.utils.find(
+        lambda ch: isinstance(ch, discord.TextChannel) and ch.name == name,
+        category.channels,
+    )
+    if existing:
+        return existing
+    return await guild.create_text_channel(
+        name,
+        category=category,
+        topic=topic,
+        reason="Friends Village v4.2 additive layout",
+    )
 
 
 async def ensure_text_channel(
@@ -193,10 +213,7 @@ async def ensure_text_channel(
         guild.channels,
     )
     if existing:
-        if existing.category_id != category.id:
-            await existing.edit(category=category, reason="Friends Village setup: keep layout in sync")
-        if topic and existing.topic != topic:
-            await existing.edit(topic=topic, reason="Friends Village setup: update channel topic")
+        # Preserve the existing channel exactly as it is; do not move or edit it.
         return existing
     return await guild.create_text_channel(
         name,
@@ -216,8 +233,7 @@ async def ensure_voice_channel(
         guild.channels,
     )
     if existing:
-        if existing.category_id != category.id:
-            await existing.edit(category=category, reason="Friends Village setup: keep layout in sync")
+        # Preserve the existing voice channel and its category/permissions.
         return existing
     return await guild.create_voice_channel(
         name,
@@ -241,16 +257,7 @@ async def ensure_forum_channel(
     )
     tag_objects = [discord.ForumTag(name=tag[:20]) for tag in (tags or [])[:20]]
     if existing:
-        edits = {}
-        if existing.category_id != category.id:
-            edits["category"] = category
-        if topic and existing.topic != topic:
-            edits["topic"] = topic
-        # Add starter tags only to a forum that has none; never overwrite user tags.
-        if tag_objects and not existing.available_tags:
-            edits["available_tags"] = tag_objects
-        if edits:
-            await existing.edit(**edits, reason="Friends Village setup: keep layout in sync")
+        # Existing forum channels and user-managed tags are left untouched.
         return existing
     return await guild.create_forum(
         name,
@@ -517,7 +524,7 @@ async def on_member_join(member: discord.Member):
     if isinstance(channel, discord.TextChannel):
         embed = discord.Embed(
             title="✦ Welcome to Friends Village | بەخێربێیت ✦",
-            description=(f"Welcome {member.mention}! Make yourself at home.\\n"
+            description=(f"Welcome {member.mention}! Make yourself at home.\n"
                          f"بەخێربێیت {member.mention}! هیڤیدارین کاتەکە تە خۆش بیت."),
             color=GOLD,
         )
@@ -643,6 +650,8 @@ async def setup(interaction: discord.Interaction):
     await ensure_text_channel(guild, community_cat, "📸・media-gallery", "Share photos, clips and creations.")
     await ensure_text_channel(guild, community_cat, "💡・suggestions", "Share ideas to improve the server.")
     await ensure_text_channel(guild, community_cat, "🤖・bot-commands", "Use bot commands here.")
+    await ensure_text_channel_in_category(guild, community_cat, "🚀・boosts", "Celebrate and thank Friends Village server boosters.")
+    await ensure_text_channel_in_category(guild, community_cat, "📱・social-media", "Share official Friends Village social media links and updates.")
 
     # 03 — Gaming
     gaming_cat = await ensure_category(guild, "🎮・GAMING", public_overwrites)
@@ -650,6 +659,11 @@ async def setup(interaction: discord.Interaction):
     await ensure_text_channel(guild, gaming_cat, "👥・find-a-team", "Find people to play with.")
     await ensure_text_channel(guild, gaming_cat, "🏆・game-results", "Share your wins, scores and achievements.")
     await ensure_text_channel(guild, gaming_cat, "📰・gaming-news", "Gaming updates, releases and news.")
+    await ensure_text_channel_in_category(guild, gaming_cat, "⚽・pes-efootball", "Discuss PES and eFootball, matches and squads.")
+    await ensure_text_channel_in_category(guild, gaming_cat, "🪖・pubg", "Find teammates and discuss PUBG.")
+    await ensure_text_channel_in_category(guild, gaming_cat, "🍃・among-us", "Discuss Among Us and find a crew.")
+    await ensure_text_channel_in_category(guild, gaming_cat, "🧱・roblox", "Share Roblox games, experiences and creations.")
+    await ensure_text_channel_in_category(guild, gaming_cat, "👻・horror-games", "Talk about horror games and share recommendations.")
 
     # 04 — Creative world
     creative_cat = await ensure_category(guild, "🎨・CREATIVE WORLD", public_overwrites)
@@ -658,6 +672,13 @@ async def setup(interaction: discord.Interaction):
     await ensure_text_channel(guild, creative_cat, "🎬・clips-and-videos", "Share your favorite clips and videos.")
     await ensure_text_channel(guild, creative_cat, "🎵・music-corner", "Talk about music and share recommendations.")
     await ensure_text_channel(guild, creative_cat, "😂・memes-and-fun", "Memes, jokes and good vibes.")
+
+    # 04A — Gallery: new channels are added without moving existing media channels.
+    gallery_cat = await ensure_category(guild, "🖼️・GALLERY", public_overwrites)
+    await ensure_text_channel_in_category(guild, gallery_cat, "🏡・family-village", "Family Village moments and community memories.")
+    await ensure_text_channel_in_category(guild, gallery_cat, "📸・photos", "Share photos with the Friends Village community.")
+    await ensure_text_channel_in_category(guild, gallery_cat, "🎬・videos", "Share videos and clips with the community.")
+    await ensure_text_channel_in_category(guild, gallery_cat, "💬・payv", "A space for Payv posts and community sharing.")
 
     # 05 — Events and activities
     events_cat = await ensure_category(guild, "🎉・EVENTS & ACTIVITIES", public_overwrites)
@@ -768,6 +789,13 @@ async def setup(interaction: discord.Interaction):
     friends_cat = await ensure_category(
         guild, "🫂・PRIVATE FRIENDS CLUB", friends_overwrites
     )
+    # This is the one intentional existing-category update requested: keep it private
+    # and pin it at the top. All other existing categories retain their positions.
+    await friends_cat.edit(
+        overwrites=friends_overwrites,
+        position=0,
+        reason="Friends Village v4.2: pin Private Friends Club at the top",
+    )
     await ensure_text_channel(guild, friends_cat, "💬・friends-chat", "Private chat for invited friends.")
     await ensure_text_channel(guild, friends_cat, "😂・friends-memes", "Memes and jokes for the friends group.")
     await ensure_text_channel(guild, friends_cat, "📸・friends-media", "Private photos, clips and media.")
@@ -808,9 +836,9 @@ async def setup(interaction: discord.Interaction):
     embed = discord.Embed(
         title="✨ Friends Village — Luxury Setup Complete",
         description=(
-            "The server layout is ready. Existing channels and messages were not deleted.\n\n"
-            "**Public areas:** Welcome, Community, Gaming, Creative World, Events, Voice Lounge and Forums.\n"
-            "**Private areas:** VIP Private Lounge, Private Friends Club and Staff Control.\n"
+            "The server layout is ready. Existing channels and messages were not deleted. Existing channels/categories are not moved or rewritten.\n\n"
+            "**Public areas:** Welcome, Community, Gaming, Gallery, Creative World, Events, Voice Lounge and Forums.\n"
+            "**Private areas:** VIP Private Lounge, Private Friends Club (pinned at the top) and Staff Control.\n"
             "**Friends access:** Assign trusted people the `Village Friends` role.\n"
             "**Audio:** Music, Quran and Soundpad libraries and voice rooms are ready. Managers upload files with `/audio-upload`; members play them with `/audio-play`.\n"
             "**Support:** Ticket panel is ready.\n\n"
@@ -922,14 +950,14 @@ async def on_message(message: discord.Message):
         recent = [t for t in _spam_times.get(key, []) if now - t <= 8]
         recent.append(now)
         _spam_times[key] = recent[-8:]
-        if re.search(r"(https?://|www\\.|discord\\.gg/)", message.content, re.I):
+        if re.search(r"(https?://|www\.|discord\.gg/)", message.content, re.I):
             try:
                 await message.delete()
                 await message.channel.send(
                     f"{member.mention} Links are restricted here. | لینک ل ڤێرێ قەدەغەیە.",
                     delete_after=5
                 )
-                await audit(guild, "AutoMod • Link blocked", f"Member: {member.mention}\\nChannel: {message.channel.mention}")
+                await audit(guild, "AutoMod • Link blocked", f"Member: {member.mention}\nChannel: {message.channel.mention}")
             except discord.Forbidden:
                 pass
             return
@@ -937,7 +965,7 @@ async def on_message(message: discord.Message):
             try:
                 await message.delete()
                 await member.timeout(discord.utils.utcnow() + timedelta(seconds=30), reason="AutoMod flood protection")
-                await audit(guild, "AutoMod • Flood detected", f"Member: {member.mention}\\nAction: 30-second timeout")
+                await audit(guild, "AutoMod • Flood detected", f"Member: {member.mention}\nAction: 30-second timeout")
             except discord.Forbidden:
                 pass
             _spam_times[key] = []
@@ -976,7 +1004,7 @@ async def warn_member(interaction: discord.Interaction, member: discord.Member, 
         count = conn.execute("SELECT COUNT(*) FROM warnings WHERE guild_id=? AND user_id=?",
                              (interaction.guild_id, member.id)).fetchone()[0]
         conn.commit()
-    await audit(interaction.guild, "Member warned", f"Member: {member.mention}\\nModerator: {interaction.user.mention}\\nReason: {reason}")
+    await audit(interaction.guild, "Member warned", f"Member: {member.mention}\nModerator: {interaction.user.mention}\nReason: {reason}")
     await interaction.response.send_message(f"⚠️ {member.mention} warned. Total warnings: **{count}**.", ephemeral=True)
 
 
@@ -988,7 +1016,7 @@ async def show_warnings(interaction: discord.Interaction, member: discord.Member
         rows = conn.execute("SELECT moderator_id,reason,created_at FROM warnings WHERE guild_id=? AND user_id=? ORDER BY id DESC LIMIT 10",
                             (interaction.guild_id, member.id)).fetchall()
     embed = discord.Embed(title=f"Warnings • {member}", color=GOLD)
-    embed.description = "\\n".join(f"• <@{r['moderator_id']}> — {r['created_at']}\\n{r['reason']}" for r in rows) or "No warnings. | هیچ ئاگەهدارییەک نییە."
+    embed.description = "\n".join(f"• <@{r['moderator_id']}> — {r['created_at']}\n{r['reason']}" for r in rows) or "No warnings. | هیچ ئاگەهدارییەک نییە."
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
@@ -1028,7 +1056,7 @@ async def leaderboard(interaction: discord.Interaction):
         rows = conn.execute("SELECT user_id,xp,level FROM member_xp WHERE guild_id=? ORDER BY xp DESC LIMIT 10",
                             (interaction.guild_id,)).fetchall()
     embed = discord.Embed(title="🏆 Friends Village • Leaderboard", color=GOLD)
-    embed.description = "\\n".join(f"**{i}.** <@{r['user_id']}> — Level **{r['level']}** · {r['xp']:,} XP"
+    embed.description = "\n".join(f"**{i}.** <@{r['user_id']}> — Level **{r['level']}** · {r['xp']:,} XP"
                                     for i, r in enumerate(rows, 1)) or "No XP yet — start chatting!"
     await interaction.response.send_message(embed=embed)
 
@@ -1103,7 +1131,7 @@ async def on_member_join(member: discord.Member):
     if isinstance(channel, discord.TextChannel):
         embed = discord.Embed(
             title="✦ Welcome to Friends Village | بەخێربێیت ✦",
-            description=(f"Welcome {member.mention}! Make yourself at home.\\n"
+            description=(f"Welcome {member.mention}! Make yourself at home.\n"
                          f"بەخێربێیت {member.mention}! هیڤیدارین کاتەکە تە خۆش بیت."),
             color=GOLD
         )
@@ -1125,14 +1153,14 @@ async def on_message_delete(message: discord.Message):
     if message.guild and not message.author.bot:
         content = (message.content or "[No text content / attachment]")[:800]
         await audit(message.guild, "Message deleted",
-                    f"Author: {message.author.mention}\\nChannel: {message.channel.mention}\\nContent: {content}")
+                    f"Author: {message.author.mention}\nChannel: {message.channel.mention}\nContent: {content}")
 
 
 @bot.event
 async def on_message_edit(before: discord.Message, after: discord.Message):
     if before.guild and not before.author.bot and before.content != after.content:
         await audit(before.guild, "Message edited",
-                    f"Author: {before.author.mention}\\nChannel: {before.channel.mention}\\nBefore: {before.content[:350]}\\nAfter: {after.content[:350]}")
+                    f"Author: {before.author.mention}\nChannel: {before.channel.mention}\nBefore: {before.content[:350]}\nAfter: {after.content[:350]}")
 
 
 @bot.tree.error
