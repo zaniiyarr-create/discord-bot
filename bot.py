@@ -192,11 +192,13 @@ async def ensure_text_channel_in_category(
     )
     if existing:
         return existing
+    guide = BADINI_CHANNEL_GUIDES.get(name)
+    badini_topic = guide[1] if guide else topic
     return await guild.create_text_channel(
         name,
         category=category,
-        topic=topic,
-        reason="Friends Village v4.2 additive layout",
+        topic=badini_topic,
+        reason="Friends Village v4.2.1 Badini channel guide",
     )
 
 
@@ -215,11 +217,13 @@ async def ensure_text_channel(
     if existing:
         # Preserve the existing channel exactly as it is; do not move or edit it.
         return existing
+    guide = BADINI_CHANNEL_GUIDES.get(name)
+    badini_topic = guide[1] if guide else topic
     return await guild.create_text_channel(
         name,
         category=category,
-        topic=topic,
-        reason="Friends Village setup",
+        topic=badini_topic,
+        reason="Friends Village setup with Badini channel guide",
     )
 
 
@@ -289,11 +293,92 @@ async def send_ticket_panel(channel: discord.TextChannel):
             if message.embeds[0].title == "Friends Village Support":
                 return
     embed = discord.Embed(
-        title="Friends Village Support",
-        description="Need help? Press the button below to create a private support ticket.",
+        title="یارمەتییا Friends Village",
+        description="پێویستت ب یارمەتییە؟ ل دوگمێ خوارێ کرتە بکە بۆ دروستکرنا تیکەتەکا تایبەت و کێشەیا خۆ ڕوون بکە.",
         color=GOLD,
     )
     await channel.send(embed=embed, view=TicketPanelView())
+
+
+# -------------------- Badini channel guides --------------------
+# Each guide is posted once and pinned. Existing channel names, positions,
+# permissions, topics and messages are not edited or deleted.
+BADINI_CHANNEL_GUIDES = {
+    "👋・welcome": ("بەخێرهاتی بۆ گوندێ هەڤالان", "ب خێر هاتی بۆ کۆمەڵگا یا Friends Village! ل ڤێرە پەیامێن بەخێرهاتن و زانیارییێن سەرەکی دبینیت. ژ بوو دەستپێکرنێ، یاسایێن سێرڤەری بخوینە و رولێ گونجاو هەلبژێرە. هیڤیدارین کاتەکە تە خۆش بیت! 💛"),
+    "📜・server-rules": ("یاسایێن سێرڤەری", "تکایە هەمی یاسایێن ڤێرە بخوینە پێش کو دەست ب چاتکرنێ بکەی. ڕێزگرتن ژ هەمی ئەندامان، نەکرنا سپام و لینکێن نەخوازراو، و پاراستنا ئارامییا کۆمەڵگایێ پێویستن. بەشدارییا تە گرنگە؛ با ژ بوو هەمیان شووەکەکێ خۆش بهێلیت."),
+    "📢・announcements": ("ئاگەهداری و هەواڵێن فەرمی", "ل ڤێرە تەنێ ئاگەهداری و هەواڵێن فەرمی یێن Friends Village دێ بهێنە بڵاوکرن. بۆ زانینا نووترین گۆڕانکاری و چالاکییان، ئەم چانەلە بەدواداچوون بکە."),
+    "🎭・roles": ("رولێن خۆ هەلبژێرە", "ل ڤێرە رولێن گونجاو بۆ خۆ هەلبژێرە، دا بتوانی چانەل و چالاکییێن پەیوەندیدار ببینی. ئەگەر رولەکێ نەدیت یان پێویستت ب یارمەتی بوو، پەیوەندیێ ب ستافێ بکە."),
+    "💭・general-chat": ("چاتا گشتی", "ل ڤێرە دەتوانی ل گەل هەمی ئەندامان ب ئازادی چات بکەی، پرسیاران بکەی و بیرۆکەیان بڵاڤ بکەی. تکایە ڕێزێ ل هەمیان بگرە و چاتێ ل بابەتێن گشتی ڕابگرە."),
+    "🤝・introductions": ("خۆ بناسینە", "ب خێر هاتی! ل ڤێرە خۆ بناسینە: ناڤێ تە چییە، حەز ژ چی دکەی و کام یاری یان چالاکی دڤێت؟ زانیارییێن نهێنی و کەسی بڵاو مەکە."),
+    "📸・media-gallery": ("پیشاندانا وێنە و ڤیدیۆیان", "وێنە، ڤیدیۆ و داهێنانێن خۆ ل ڤێرە بڵاو بکە. تکایە تەنێ ناوەڕۆکێن گونجاو بڵاو بکە و مافێ خاوەنێ وێنە و ڤیدیۆیان بپارێزە."),
+    "💡・suggestions": ("پێشنیارێن تە", "بیرۆکە و پێشنیارێن خۆ بۆ باشترکرنا Friends Village ل ڤێرە بنڤیسە. باشترە پێشنیارا تە ڕوون بیت و بڵێیت چۆن دێ یارمەتی کۆمەڵگایێ بکەت."),
+    "🤖・bot-commands": ("چانەلێ فەرمانێن بۆتێ", "فەرمانێن بۆتێ ل ڤێرە بەکار بینە. بۆ دیتنا فەرمانێن بەردەست، /help بنڤیسە. تکایە فەرمانان ب دووبارە و ب شێوەیێ سپام بەکار نەهێنە."),
+    "🚀・boosts": ("سوپاس بۆ Boost ـکرنێ!", "ئەڤ چانەلە بۆ سوپاسگوزاری و ئاگەهداریا Boost ـێن سێرڤەرییە. ئەگەر سێرڤەرێت Boost کرد، سوپاس بۆ پشتگیرییا تە! هەر Boost یارمەتی ددەت Friends Village گەشە بکەت. 💜"),
+    "📱・social-media": ("تۆڕێن کۆمەڵایەتی", "ل ڤێرە لینک و هەژمارێن فەرمی یێن Friends Village دێ بهێنە دانان. لینکێن خۆ یان یێن پەیوەندیدار ب ڕێزەوە بڵاو بکە؛ لینکێن گومانلێکراو یان زیانبار مەکە."),
+    "🎮・gaming-chat": ("گفتوگۆیا یارییان", "ل سەر یارییێن جۆراوجۆر، نووکرن، ئەزموون و هەواڵان گفتوگۆ بکە. بۆ هەر یارییەکا تایبەت، چانەلێ تایبەت بەکار بینە."),
+    "👥・find-a-team": ("هاوتیم بدۆزە", "دڤێت ل گەل هەڤالان یاری بکەی؟ ناڤێ یاریێ، پلاتفۆرمێ و کاتیێ یاریێ بنڤیسە. تکایە ڕێزگرتن و هاوکاری ل گەل یاریزانان بکە."),
+    "🏆・game-results": ("ئەنجام و سەرکەفتن", "ئەنجامێن یارییان، سکۆر، سەرکەفتن و دەستکەفتێن خۆ ل ڤێرە بڵاو بکە. دەتوانی وێنە یان کلیپێک ژ ئەنجامێ زیاد بکەی."),
+    "📰・gaming-news": ("هەواڵێن یارییان", "هەواڵ، نووکرن و زانیارییێن نوو یێن دنیایا یارییان ل ڤێرە بڵاو بکە. سەرچاوەیا هەواڵێ بنڤیسە ئەگەر هەیە."),
+    "⚽・pes-efootball": ("چاتا PES و eFootball", "ل سەر PES و eFootball گفتوگۆ بکە، ماتچێن دۆستانە ڕێک بخە، تیم و یاریزانان باس بکە و سکۆرێن خۆ بڵاو بکە. بۆ یاری هاوبەش، ناڤێ خۆ و کاتیێ بەردەست بنڤیسە."),
+    "🪖・pubg": ("چاتا PUBG", "هاوتیمی PUBG بدۆزە، سکۆادێک پێک بینە و کاتیێ یاریێ ڕێک بخە. مۆدێ یاریێ و ناڤێ خۆ بنڤیسە؛ ل گەل یاریزانان ب ڕێز و هاوکاری ڕەفتار بکە."),
+    "🍃・among-us": ("چاتا Among Us", "ل ڤێرە بۆ Among Us کەس بدۆزە و گرووپێ یاریێ پێک بینە. کاتیێ یاریێ ڕێک بخە و ئەزموونێن خۆ ل گەل ئەندامان پارڤە بکە."),
+    "🧱・roblox": ("چاتا Roblox", "یاریێن Roblox یێن حەژێکری، مابەست و داهێنانێن خۆ بڵاو بکە. یاریێن نوو پێشنیار بکە و ل گەل ئەندامان یاری بکە."),
+    "👻・horror-games": ("چاتا یاریێن ترسناک", "ل سەر یاریێن ترسناک گفتوگۆ بکە، پێشنیار و ئەزموونێن خۆ پارڤە بکە. ئەگەر ناوەڕۆکێک سپۆیلەر هەیە، پێشتر ئاگەهداری بکە."),
+    "🎨・art-gallery": ("گالەریا هونەرێ", "کارێ هونەری، وێنەکێشان، دیزاین و داهێنانێن خۆ ل ڤێرە پیشان بدە. ڕێزێ ل کارێ هەڤالان بگرە و ناڤێ خاوەنێ کارێ بنڤیسە."),
+    "📷・photography": ("هونەرا وێنەگرتنێ", "وێنەیێن خۆ و ساتێن جوان ل ڤێرە پارڤە بکە. ئەگەر وێنەکە یا کەسەکێ دییە، پێش بڵاوکرنێ ڕەزامەندیا وی وەرگرە."),
+    "🎬・clips-and-videos": ("کلیپ و ڤیدیۆ", "کلیپ و ڤیدیۆیێن خۆ یان ناوەڕۆکێن گونجاو ل ڤێرە بڵاو بکە. تکایە ناوەڕۆکێن نەگونجاو و لینکێن گومانلێکراو مەهێنە."),
+    "🎵・music-corner": ("گۆشەیا موزیکێ", "ل سەر موزیک، هونەرمەند و سترانێن حەژێکری گفتوگۆ بکە و پێشنیارێن خۆ بدە. مافێ خاوەنێ کاران بپارێزە."),
+    "😂・memes-and-fun": ("خۆشی و پێکەنین", "میم، گاڤ و ناوەڕۆکێن خۆش ل ڤێرە پارڤە بکە. با خۆشی بێت، بەڵام کەس مەئازێنە و گاڤێن دژوار مەکە."),
+    "🏡・family-village": ("یادگاریێن Family Village", "چیرۆک، یادگاری و ساتێن تایبەت یێن Family Village ل ڤێرە پارڤە بکە. با ئەڤ چانەلە ببیتە ئەرشیڤەکا جوان بۆ یادگاریێن کۆمەڵگایێ."),
+    "📸・photos": ("چانەلێ وێنان", "تەنێ وێنەیێن خۆ یان وێنەیێن ڕێپێدراو ل ڤێرە بڵاو بکە. بۆ هەر وێنەیەک دەتوانی ڕوونکرنەوەیەکا کورت زیاد بکەی."),
+    "🎬・videos": ("چانەلێ ڤیدیۆیان", "ڤیدیۆ و کلیپێن خۆ ل ڤێرە بڵاو بکە. تکایە پێش بڵاوکرنێ دڵنیا بە کو ڤیدیۆکە گونجاوە و مافێ خاوەنێ ناڤەڕۆکێ پاراستییە."),
+    "💬・payv": ("چانەلێ Payv", "پۆست و ناوەڕۆکێن پەیوەندیدار ب Payv ل ڤێرە پارڤە بکە. تکایە پەیوەندی و گفتوگۆیان ب ڕێزەوە بهێلە و سپام مەکە."),
+    "📅・events": ("چالاکی و بۆنە", "زانیاریێن چالاکی و بۆنەیێن Friends Village ل ڤێرە دێ بهێنە بڵاوکرن. بەروار، کات و شێوازێ بەشداریێ بخوینە پێش بەشداریێ."),
+    "🎁・giveaways": ("خەڵات و پێشکێشان", "زانیاریێن پێشکێشان و خەڵاتان ل ڤێرە بخوینە. تەنێ ڕێنماییێن فەرمی بەدواداچوون بکە و هیچ زانیارییا نهێنی یان وشەیا نهێنی مەدە."),
+    "🏅・competitions": ("پێشبڕکێ و پاڵەوانی", "پێشبڕکێ و پاڵەوانییێن سێرڤەری ل ڤێرە دێ بهێنە ڕێکخستن. یاسایێن پێشبڕکێێ بخوینە و بە ڕەفتارەکا وەرزشی بەشداریێ بکە."),
+    "📊・polls": ("دەنگدان و ڕای", "ل دەنگدانان بەشداریێ بکە و ڕایێ خۆ بڵاو بکە. ڕێزێ ل ڕایێ جیاواز یێن ئەندامان بگرە."),
+    "🎶・music-requests": ("داخوازییا موزیکێ", "ناڤێ موزیکێ یان داخوازییا خۆ ل ڤێرە بنڤیسە. ئەدمین دکارن فایلێن ڕێپێدراو زیاد بکەن؛ بۆ لیستا موزیکێ /audio-list و بۆ لێدانێ /audio-play بەکار بینە."),
+    "📚・music-library": ("کتێبخانەیا موزیکێ", "بۆ دیتنا فایلێن موزیکێ /audio-list kind:Music بەکار بینە. بۆ لێدانا فایلێک، پێویستە ل چانەلەکا دەنگی بیت و /audio-play بەکار بینە."),
+    "🕌・quran-library": ("کتێبخانەیا قورئانێ", "ل ڤێرە تلاوەتێن قورئانێ یێن بەرپرسێن سێرڤەری زیادکری دبینیت. بۆ دیتنا فایلان /audio-list kind:Quran بەکار بینە و ب ڕێزەوە گوهداریێ بکە."),
+    "🌙・quran-reflections": ("بیر و ئامۆژگاریێن قورئانی", "ل ڤێرە دەتوانی بیر، ئامۆژگاری و گفتوگۆیێن ب ڕێز ل سەر وانەیێن قورئانی پارڤە بکەی. تکایە قورئان و هەمی باوەڕداران ب ڕێز بگرە."),
+    "🎛️・soundpad-library": ("کتێبخانەیا Soundpad", "بۆ دیتنا دەنگ و کاریگەرییێن بارکری /audio-list kind:Soundpad بەکار بینە. بۆ لێدانێ ل چانەلەکا دەنگی بیت و /audio-play بەکار بینە."),
+    "📤・soundpad-uploads": ("بارکرنا دەنگان", "تەنێ ئەدمین و بەرپرسێن ڕێپێدراو دکارن فایلێن دەنگی بار بکەن. بۆ زیادکرنا فایلێک /audio-upload kind:Soundpad بەکار بینە."),
+    "💎・vip-chat": ("چاتا تایبەت یا VIP", "ئەڤ چانەلە تەنێ بۆ ئەندامێن Village VIP و ستافێ ڕێپێدراوە. ڕێزێ ل تایبەتمەندییا ئەندامان بگرە و ناوەڕۆکێ تایبەت دەرڤە مەبڵاو بکە."),
+    "📸・vip-media": ("میدیا یا VIP", "وێنە و ڤیدیۆیێن گونجاو ل ناڤ کۆمەڵگا یا VIP پارڤە بکە. ئەڤ ناوەڕۆکە تایبەتە و نابێت بێ ڕەزامەندی بڵاو بکرێتەوە."),
+    "💬・friends-chat": ("چاتا Private Friends Club", "ب خێر هاتی بۆ کۆمەڵگا یا تایبەت یا هەڤالان. ل ڤێرە ب ئازادی و ب ڕێز چات بکە و گفتوگۆیێن تایبەت ل ناڤ ئەڤ کۆمەڵگایێ بهێلە."),
+    "😂・friends-memes": ("گاڤ و میمێن هەڤالان", "میم و گاڤێن خۆ ل گەل هەڤالێن تایبەت پارڤە بکە. با هەمی کەس پێبکەنن، نە کو کەسێک هەست ب خراپیێ بکەت."),
+    "📸・friends-media": ("میدیایا هەڤالان", "وێنە و ڤیدیۆیێن تایبەت ل ڤێرە پارڤە بکە. ناوەڕۆکێ ئەڤ چانەلێ نهێنییە؛ بێ ڕەزامەندی ب دەرڤە مەبڵاو بکە."),
+    "🎮・gaming-plans": ("پلانێن یارییا هەڤالان", "بۆ یارییا هاوبەش پلان دابنێ. ناڤێ یاریێ، ڕۆژ و کاتیێ یاریێ بنڤیسە و هەڤالێن خۆ بانگ بکە."),
+    "📋・staff-logs": ("تۆمارێن ستافێ", "ئەڤ چانەلە بۆ تۆمار و ئاگەهدارییێن کارێ ستافێیە. تەنێ ئەندامێن ڕێپێدراو دکارن ناوەڕۆکێ ببینن؛ تۆماران مەسڕە و بێ پێویستی دەستکارییان مەکە."),
+    "💬・staff-chat": ("چاتا ستافێ", "ئەڤ چانەلە بۆ هاوئاهەنگی و گفتوگۆیا ناڤخۆییا ستافێیە. زانیارییێن ئەندامان ب پارێزراوی بهێلە و ب ڕێز ل گەل یەکتر کار بکە."),
+    "🎫・create-a-ticket": ("داخوازییا یارمەتیێ", "پێویستت ب یارمەتییە؟ ل دوگمێ دروستکرنا تیکەتێ کرتە بکە و کێشەیا خۆ ڕوون بکە. تەنێ تۆ و ستافێ ڕێپێدراو دێ بتوانن ئەڤ گفتوگۆیە ببینن."),
+}
+
+async def post_badini_channel_guides(guild: discord.Guild):
+    """Post and pin one Badini guide in each managed text channel, without editing old content."""
+    marker = "Friends Village • Rêberiya Badînî • FV42.1"
+    for channel in guild.text_channels:
+        guide = BADINI_CHANNEL_GUIDES.get(channel.name)
+        if not guide:
+            continue
+        try:
+            async for old_message in channel.history(limit=50):
+                if old_message.author == bot.user and old_message.embeds:
+                    footer = old_message.embeds[0].footer.text or ""
+                    if marker in footer:
+                        if not old_message.pinned:
+                            await old_message.pin(reason="Rêbera Badînî ya kanalan")
+                        break
+            else:
+                title, description = guide
+                embed = discord.Embed(title=f"✦ {title}", description=description, color=GOLD)
+                embed.set_footer(text=marker)
+                message = await channel.send(embed=embed)
+                await message.pin(reason="Rêbera Badînî ya kanalan")
+        except discord.Forbidden:
+            log.warning("Missing send/pin permissions for Badini guide in #%s", channel.name)
+        except discord.HTTPException:
+            log.exception("Could not publish Badini guide in #%s", channel.name)
 
 
 # -------------------- Ticket UI --------------------
@@ -302,7 +387,7 @@ class TicketPanelView(discord.ui.View):
         super().__init__(timeout=None)
 
     @discord.ui.button(
-        label="Create a ticket",
+        label="دروستکرنا تیکەتێ",
         style=discord.ButtonStyle.primary,
         emoji="🎫",
         custom_id="friends_village:create_ticket",
@@ -310,7 +395,7 @@ class TicketPanelView(discord.ui.View):
     async def create_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         guild = interaction.guild
         if guild is None:
-            return await interaction.response.send_message("This button only works in a server.", ephemeral=True)
+            return await interaction.response.send_message("ئەڤ دوگمە تەنێ ل ناڤ سێرڤەرەکێ کار دکەت.", ephemeral=True)
 
         await interaction.response.defer(ephemeral=True, thinking=True)
 
@@ -321,7 +406,7 @@ class TicketPanelView(discord.ui.View):
         )
         if existing:
             return await interaction.followup.send(
-                f"You already have an open ticket: {existing.mention}", ephemeral=True
+                f"تۆ پێشتر تیکەتەکا ڤەکری هەیە: {existing.mention}", ephemeral=True
             )
 
         category = discord.utils.get(guild.categories, name="🎫・SUPPORT TICKETS")
@@ -332,7 +417,7 @@ class TicketPanelView(discord.ui.View):
         if bot_member is None and bot.user is not None:
             bot_member = guild.get_member(bot.user.id)
         if bot_member is None:
-            return await interaction.followup.send("I could not verify my server permissions. Please try again shortly.", ephemeral=True)
+            return await interaction.followup.send("نەشێم دەسەڵاتێن بۆتێ پشتڕاست بکەمەوە. تکایە دووبارە هەوڵ بدە.", ephemeral=True)
 
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False),
@@ -356,7 +441,7 @@ class TicketPanelView(discord.ui.View):
         )
         embed = discord.Embed(
             title="Support ticket",
-            description=f"Hello {interaction.user.mention}! Describe what you need help with. A moderator will assist you.",
+            description=f"ب خێر هاتی {interaction.user.mention}! تکایە کێشە یان داخوازییا خۆ ڕوون بکە؛ ئەندامەکێ ستافێ دێ یارمەتییا تە بکەت.",
             color=GOLD,
         )
         await channel.send(
@@ -364,7 +449,7 @@ class TicketPanelView(discord.ui.View):
             embed=embed,
             view=CloseTicketView(),
         )
-        await interaction.followup.send(f"Your ticket is ready: {channel.mention}", ephemeral=True)
+        await interaction.followup.send(f"تیکەتەکا تە ئامادەیە: {channel.mention}", ephemeral=True)
 
 
 class CloseTicketView(discord.ui.View):
@@ -372,7 +457,7 @@ class CloseTicketView(discord.ui.View):
         super().__init__(timeout=None)
 
     @discord.ui.button(
-        label="Close ticket",
+        label="داخستنا تیکەتێ",
         style=discord.ButtonStyle.danger,
         emoji="🔒",
         custom_id="friends_village:close_ticket",
@@ -380,21 +465,21 @@ class CloseTicketView(discord.ui.View):
     async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         channel = interaction.channel
         if not isinstance(channel, discord.TextChannel) or not channel.topic:
-            return await interaction.response.send_message("This is not a ticket channel.", ephemeral=True)
+            return await interaction.response.send_message("ئەڤ چانەلە تیکەت نینە.", ephemeral=True)
 
         if not channel.topic.startswith("ticket-owner:"):
-            return await interaction.response.send_message("This is not a ticket channel.", ephemeral=True)
+            return await interaction.response.send_message("ئەڤ چانەلە تیکەت نینە.", ephemeral=True)
 
         owner_id = int(channel.topic.split(":", 1)[1])
         is_owner = interaction.user.id == owner_id
         is_staff = interaction.user.guild_permissions.manage_channels or interaction.user.guild_permissions.administrator
         if not (is_owner or is_staff):
             return await interaction.response.send_message(
-                "Only the ticket creator or a server moderator can close this ticket.",
+                "تەنێ دروستکەرێ تیکەتێ یان بەرپرسێ سێرڤەری دکارن ئەڤ تیکەتە دابخەن.",
                 ephemeral=True,
             )
 
-        await interaction.response.send_message("Ticket will be closed in a moment.", ephemeral=True)
+        await interaction.response.send_message("تیکەت دێ نێزیکا داخستنێ بیت.", ephemeral=True)
         await channel.delete(reason=f"Ticket closed by {interaction.user}")
 
 
@@ -523,9 +608,9 @@ async def on_member_join(member: discord.Member):
     channel = member.guild.get_channel(channel_id)
     if isinstance(channel, discord.TextChannel):
         embed = discord.Embed(
-            title="✦ Welcome to Friends Village | بەخێربێیت ✦",
-            description=(f"Welcome {member.mention}! Make yourself at home.\n"
-                         f"بەخێربێیت {member.mention}! هیڤیدارین کاتەکە تە خۆش بیت."),
+            title="✦ ب خێر هاتی بۆ Friends Village ✦",
+            description=(f"ب خێر هاتی {member.mention}! ئەڤ شووە یا تەیە؛ هیڤیدارین کاتەکە تە خۆش بیت.\n"
+                         "یاسایێن سێرڤەری بخوینە و ل گەل هەمی ئەندامان ب ڕێز ڕەفتار بکە."),
             color=GOLD,
         )
         embed.set_thumbnail(url=member.display_avatar.url)
@@ -601,7 +686,7 @@ async def setup(interaction: discord.Interaction):
     bot_member = guild.me or (guild.get_member(bot.user.id) if bot.user else None)
     if bot_member is None:
         return await interaction.response.send_message(
-            "I could not verify my server permissions. Please try again shortly.",
+            "نەشێم دەسەڵاتێن بۆتێ پشتڕاست بکەمەوە. تکایە دووبارە هەوڵ بدە.",
             ephemeral=True,
         )
     if not bot_member.guild_permissions.manage_channels:
@@ -831,21 +916,24 @@ async def setup(interaction: discord.Interaction):
     support = await ensure_text_channel(guild, ticket_cat, "🎫・create-a-ticket")
     await send_ticket_panel(support)
 
+    # Add Badini pinned guides to every managed text channel; old messages remain untouched.
+    await post_badini_channel_guides(guild)
+
     set_welcome_channel(guild.id, welcome.id)
 
     embed = discord.Embed(
-        title="✨ Friends Village — Luxury Setup Complete",
+        title="✨ Friends Village — ڕێکخستن تەمام بوو",
         description=(
-            "The server layout is ready. Existing channels and messages were not deleted. Existing channels/categories are not moved or rewritten.\n\n"
-            "**Public areas:** Welcome, Community, Gaming, Gallery, Creative World, Events, Voice Lounge and Forums.\n"
-            "**Private areas:** VIP Private Lounge, Private Friends Club (pinned at the top) and Staff Control.\n"
-            "**Friends access:** Assign trusted people the `Village Friends` role.\n"
-            "**Audio:** Music, Quran and Soundpad libraries and voice rooms are ready. Managers upload files with `/audio-upload`; members play them with `/audio-play`.\n"
-            "**Support:** Ticket panel is ready.\n\n"
-            f"Welcome channel: {welcome.mention}\n"
-            f"Ticket panel: {support.mention}\n"
-            f"Staff logs: {staff_logs.mention}\n\n"
-            "**Next step:** Assign members to `Village VIP` and trusted moderators to `Village Staff`."
+            "ڕێکخستنا سێرڤەری ئامادەیە. هیچ چانەل، کاتیگۆری یان پەیامەکا بەرێ نەهاتە ژێبرن. چانەلێن بەرێ نەهاتنە گوازتنەوە یان ناڤێ وان نەهاتە گۆڕین.\n\n"
+            "**بەشێن گشتی:** بەخێرهاتن، کۆمەڵگا، یاری، گالەری، داهێنان، چالاکی و فۆرۆم.\n"
+            "**بەشێن تایبەت:** VIP، Private Friends Club (ل سەرەوە) و بەشێ ستافێ.\n"
+            "**دەستگەهشتنا هەڤالان:** رولێ `Village Friends` بدە ئەو هەڤالێن تە دڤێت دەستگەهشتنا وان هەبیت.\n"
+            "**دەنگ و موزیک:** کتێبخانەیێن موزیک، قورئان و Soundpad ئامادەن. بەرپرس دکارن فایلان ب `/audio-upload` بار بکەن و ئەندام دکارن ب `/audio-play` گوهداریێ بکەن.\n"
+            "**یارمەتی:** پانێلا تیکەتێ ئامادەیە.\n\n"
+            f"چانەلێ بەخێرهاتن: {welcome.mention}\n"
+            f"پانێلا تیکەتێ: {support.mention}\n"
+            f"تۆمارێن ستافێ: {staff_logs.mention}\n\n"
+            "**هەنگاڤا داهاتی:** رولێن `Village VIP` و `Village Staff` بدە ئەندامێن پەیوەندیدار."
         ),
         color=GOLD,
     )
@@ -1130,13 +1218,13 @@ async def on_member_join(member: discord.Member):
     channel = member.guild.get_channel(channel_id) if channel_id else None
     if isinstance(channel, discord.TextChannel):
         embed = discord.Embed(
-            title="✦ Welcome to Friends Village | بەخێربێیت ✦",
-            description=(f"Welcome {member.mention}! Make yourself at home.\n"
-                         f"بەخێربێیت {member.mention}! هیڤیدارین کاتەکە تە خۆش بیت."),
+            title="✦ ب خێر هاتی بۆ Friends Village ✦",
+            description=(f"ب خێر هاتی {member.mention}! ئەڤ شووە یا تەیە؛ هیڤیدارین کاتەکە تە خۆش بیت.\n"
+                         "یاسایێن سێرڤەری بخوینە و ل گەل هەمی ئەندامان ب ڕێز ڕەفتار بکە."),
             color=GOLD
         )
         embed.set_thumbnail(url=member.display_avatar.url)
-        embed.set_footer(text=f"Member #{member.guild.member_count or '?'} • Friends Village")
+        embed.set_footer(text=f"ئەندامێ ژمارە {member.guild.member_count or '?'} • Friends Village")
         try:
             await channel.send(embed=embed)
         except discord.Forbidden:

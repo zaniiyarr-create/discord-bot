@@ -80,3 +80,8 @@ Attach a persistent Volume mounted at `/data`. Start command: `python bot.py`.
 - Soundpad clips are played by command in the caller's current voice channel; it is not Discord's native Soundboard UI.
 - The bot cannot be considered deployed or live-tested until it is started with a valid token in your server.
 - Never share your bot token. Regenerate it immediately if exposed.
+
+
+## V4.2.1 — Rêberên kanalan bi kurdîya Badînî
+
+Di vê guhertinê de `/setup` ji bo her kanala nivîsarî ya ku bot rêve dike rêbernameyeke taybet bi zaravaya kurdîya Badînî dişîne û pin dike. Rêbername tenê carekê tê şandin. Peyamên berê nayên jêbirin; nav, cih, topic û destûrên kanalên heyî nayên guhertin. Bot divê destûra `Send Messages`, `Read Message History` û `Manage Messages` hebe da ku rêbernameyan pin bike.
